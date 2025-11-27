@@ -4,7 +4,7 @@ import cors from "cors";
 import jwt from "jsonwebtoken";  
 import { createClient } from "@supabase/supabase-js";  
 
-import promotionRoutes from "./promotion/promotions.routes.js";   // ⭐ NEW LINE ADDED
+import promotionRoutes from "./promotion/promotions.routes.js?module";   // ⭐ NEW LINE ADDED
 
 const app = express();  
 app.use(express.json());  
