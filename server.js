@@ -1,77 +1,50 @@
-// ==========================
-// server.js (FULL BACKEND)
-// ==========================
+// --------------------------
+// RENDER-SAFE SERVER.JS
+// --------------------------
 
-// ------- IMPORTS -------
 import express from "express";
-import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
 import cors from "cors";
-import multer from "multer";
-import path from "path";
-import fs from "fs";
-import { fileURLToPath } from "url";
-import dotenv from "dotenv";
+import jwt from "jsonwebtoken";
 import fetch from "node-fetch";
+import dotenv from "dotenv";
 
 dotenv.config();
 
-// ------- CONSTANTS -------
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Static folder for uploaded files
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
-
-// Supabase API URLs
+// ----------- ENV -----------
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const JWT_SECRET = process.env.JWT_SECRET;
 
-// -------------------------------
-// MULTER FILE STORAGE FOR UPLOADS
-// -------------------------------
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const uploadPath = path.join(__dirname, "uploads/");
-    if (!fs.existsSync(uploadPath)) fs.mkdirSync(uploadPath);
-    cb(null, uploadPath);
-  },
-  filename: (req, file, cb) => cb(null, Date.now() + path.extname(file.originalname)),
-});
-const upload = multer({ storage });
+// ----------- JWT -----------
+function createToken(id) {
+  return jwt.sign({ id }, JWT_SECRET, { expiresIn: "7d" });
+}
 
-// -------------------------------
-// HELPERS
-// -------------------------------
-
-// 🔐 CREATE JWT TOKEN
-const generateToken = (userId) =>
-  jwt.sign({ id: userId }, process.env.JWT_SECRET, { expiresIn: "7d" });
-
-// 🛡️ AUTH MIDDLEWARE
-const authMiddleware = async (req, res, next) => {
+function auth(req, res, next) {
   const token = req.headers.authorization?.split(" ")[1];
-  if (!token) return res.status(401).json({ error: "Unauthorized" });
+  if (!token) return res.status(401).json({ error: "No token" });
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.userId = decoded.id;
+    const decode = jwt.verify(token, JWT_SECRET);
+    req.userId = decode.id;
     next();
   } catch {
     res.status(401).json({ error: "Invalid token" });
   }
-};
+}
 
-// -------------------------------
-// ✦ USER SIGNUP
-// -------------------------------
+// ----------- ROOT -----------
+app.get("/", (req, res) => {
+  res.send("🔥 Render-ready App Store Backend Running");
+});
+
+// ----------- SIGNUP -----------
 app.post("/auth/signup", async (req, res) => {
   const { email, password } = req.body;
-
-  const hashed = await bcrypt.hash(password, 10);
 
   const { data, error } = await fetch(`${SUPABASE_URL}/rest/v1/users`, {
     method: "POST",
@@ -80,16 +53,14 @@ app.post("/auth/signup", async (req, res) => {
       Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ email, password: hashed }),
+    body: JSON.stringify({ email, password }), // no bcrypt
   }).then((r) => r.json());
 
   if (error) return res.status(400).json({ error });
-  res.json({ message: "Signup Success", data });
+  res.json({ message: "Signup success", data });
 });
 
-// -------------------------------
-// ✦ USER LOGIN
-// -------------------------------
+// ----------- LOGIN -----------
 app.post("/auth/login", async (req, res) => {
   const { email, password } = req.body;
 
@@ -105,27 +76,14 @@ app.post("/auth/login", async (req, res) => {
 
   if (!users.length) return res.status(400).json({ error: "User not found" });
 
-  const user = users[0];
-  const isMatch = await bcrypt.compare(password, user.password);
-  if (!isMatch) return res.status(400).json({ error: "Wrong password" });
+  if (users[0].password !== password)
+    return res.status(400).json({ error: "Wrong password" });
 
-  res.json({ token: generateToken(user.id), user });
+  res.json({ token: createToken(users[0].id), user: users[0] });
 });
 
-// -------------------------------
-// ✦ UPLOAD APP FILE
-// -------------------------------
-app.post("/upload", upload.single("file"), (req, res) => {
-  if (!req.file) return res.status(400).json({ error: "No file uploaded" });
-
-  const fileUrl = `/uploads/${req.file.filename}`;
-  res.json({ fileUrl });
-});
-
-// -------------------------------
-// ✦ SUBMIT APP TO STORE
-// -------------------------------
-app.post("/apps", authMiddleware, async (req, res) => {
+// ----------- SUBMIT APP -----------
+app.post("/apps", auth, async (req, res) => {
   const appData = { ...req.body, user_id: req.userId };
 
   const { data, error } = await fetch(`${SUPABASE_URL}/rest/v1/apps`, {
@@ -142,9 +100,7 @@ app.post("/apps", authMiddleware, async (req, res) => {
   res.json({ message: "App submitted", data });
 });
 
-// -------------------------------
-// ✦ GET ALL APPS
-// -------------------------------
+// ----------- GET APPS -----------
 app.get("/apps", async (req, res) => {
   const apps = await fetch(`${SUPABASE_URL}/rest/v1/apps?select=*`, {
     headers: {
@@ -156,10 +112,8 @@ app.get("/apps", async (req, res) => {
   res.json(apps);
 });
 
-// -------------------------------
-// ✦ PROMOTE AN APP
-// -------------------------------
-app.post("/apps/promote/:id", authMiddleware, async (req, res) => {
+// ----------- PROMOTE -----------
+app.post("/apps/promote/:id", auth, async (req, res) => {
   const { id } = req.params;
 
   const { data, error } = await fetch(
@@ -179,10 +133,8 @@ app.post("/apps/promote/:id", authMiddleware, async (req, res) => {
   res.json({ message: "App promoted", data });
 });
 
-// -------------------------------
-// ✦ UNPROMOTE AN APP
-// -------------------------------
-app.post("/apps/unpromote/:id", authMiddleware, async (req, res) => {
+// ----------- UNPROMOTE -----------
+app.post("/apps/unpromote/:id", auth, async (req, res) => {
   const { id } = req.params;
 
   const { data, error } = await fetch(
@@ -202,15 +154,8 @@ app.post("/apps/unpromote/:id", authMiddleware, async (req, res) => {
   res.json({ message: "App unpromoted", data });
 });
 
-// -------------------------------
-// ROOT TEST ROUTE
-// -------------------------------
-app.get("/", (req, res) => {
-  res.send("App Store Backend Running ✔");
-});
-
-// -------------------------------
-// START SERVER
-// -------------------------------
+// ----------- START -----------
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+app.listen(PORT, () =>
+  console.log(`⚡ Render Backend Running on ${PORT}`)
+);
