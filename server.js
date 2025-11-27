@@ -1,231 +1,216 @@
-// server.js  
-import express from "express";  
-import cors from "cors";  
-import jwt from "jsonwebtoken";  
-import { createClient } from "@supabase/supabase-js";  
+// ==========================
+// server.js (FULL BACKEND)
+// ==========================
 
-import promotionRoutes from "./promotion/promotions.routes.js?module";   // ⭐ NEW LINE ADDED
+// ------- IMPORTS -------
+import express from "express";
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
+import cors from "cors";
+import multer from "multer";
+import path from "path";
+import fs from "fs";
+import { fileURLToPath } from "url";
+import dotenv from "dotenv";
+import fetch from "node-fetch";
 
-const app = express();  
-app.use(express.json());  
-app.use(
-  cors({
-    origin: "*",
-    methods: ["GET", "POST", "PUT", "DELETE"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-  })
-);
+dotenv.config();
 
-// ---------- env ----------
+// ------- CONSTANTS -------
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+// Static folder for uploaded files
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
+// Supabase API URLs
 const SUPABASE_URL = process.env.SUPABASE_URL;
-const SERVICE_ROLE_KEY = process.env.SERVICE_ROLE_KEY;
-const JWT_SECRET = process.env.JWT_SECRET;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-if (!SUPABASE_URL || !SERVICE_ROLE_KEY || !JWT_SECRET) {
-  console.error("Missing envs: SUPABASE_URL, SERVICE_ROLE_KEY, JWT_SECRET");
-  process.exit(1);
-}
+// -------------------------------
+// MULTER FILE STORAGE FOR UPLOADS
+// -------------------------------
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const uploadPath = path.join(__dirname, "uploads/");
+    if (!fs.existsSync(uploadPath)) fs.mkdirSync(uploadPath);
+    cb(null, uploadPath);
+  },
+  filename: (req, file, cb) => cb(null, Date.now() + path.extname(file.originalname)),
+});
+const upload = multer({ storage });
 
-// ---------- supabase server client ----------
-const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+// -------------------------------
+// HELPERS
+// -------------------------------
 
-// ---------- storage bucket ----------
-const bucketName = "appfiles";
+// 🔐 CREATE JWT TOKEN
+const generateToken = (userId) =>
+  jwt.sign({ id: userId }, process.env.JWT_SECRET, { expiresIn: "7d" });
 
-// ---------- helpers ----------
-function auth(req, res, next) {
-  const header = req.headers.authorization || "";
-  const token = header.split(" ")[1];
-  if (!token) return res.status(401).json({ error: "No token" });
+// 🛡️ AUTH MIDDLEWARE
+const authMiddleware = async (req, res, next) => {
+  const token = req.headers.authorization?.split(" ")[1];
+  if (!token) return res.status(401).json({ error: "Unauthorized" });
+
   try {
-    const user = jwt.verify(token, JWT_SECRET);
-    req.user = user;
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.userId = decoded.id;
     next();
-  } catch (e) {
-    return res.status(401).json({ error: "Invalid token" });
+  } catch {
+    res.status(401).json({ error: "Invalid token" });
   }
-}
+};
 
-async function isAdmin(userId) {
-  const { data, error } = await supabase
-    .from("users")
-    .select("is_admin")
-    .eq("id", userId)
-    .single();
-  if (error) return false;
-  return data?.is_admin === true;
-}
+// -------------------------------
+// ✦ USER SIGNUP
+// -------------------------------
+app.post("/auth/signup", async (req, res) => {
+  const { email, password } = req.body;
 
-// ---------- ROOT ----------
-app.get("/", (req, res) => res.send("App Store Admin API ✔"));
+  const hashed = await bcrypt.hash(password, 10);
 
-// ---------- UPLOAD FILE ----------
-app.post("/upload", auth, async (req, res) => {
-  try {
-    const { fileName, fileData, folder = "uploads" } = req.body;
+  const { data, error } = await fetch(`${SUPABASE_URL}/rest/v1/users`, {
+    method: "POST",
+    headers: {
+      apikey: SUPABASE_SERVICE_ROLE_KEY,
+      Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ email, password: hashed }),
+  }).then((r) => r.json());
 
-    if (!fileName || !fileData) {
-      return res.status(400).json({ error: "Missing file" });
-    }
-
-    const buffer = Buffer.from(fileData, "base64");
-    const filePath = `${folder}/${Date.now()}-${fileName}`;
-
-    const { error } = await supabase.storage
-      .from(bucketName)
-      .upload(filePath, buffer, {
-        upsert: true,
-        contentType: "application/octet-stream",
-      });
-
-    if (error) throw error;
-
-    const { data: urlData } = supabase.storage
-      .from(bucketName)
-      .getPublicUrl(filePath);
-
-    res.json({ success: true, url: urlData.publicUrl });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
+  if (error) return res.status(400).json({ error });
+  res.json({ message: "Signup Success", data });
 });
 
-// ---------- APPS ----------
+// -------------------------------
+// ✦ USER LOGIN
+// -------------------------------
+app.post("/auth/login", async (req, res) => {
+  const { email, password } = req.body;
+
+  const users = await fetch(
+    `${SUPABASE_URL}/rest/v1/users?email=eq.${email}&select=*`,
+    {
+      headers: {
+        apikey: SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      },
+    }
+  ).then((r) => r.json());
+
+  if (!users.length) return res.status(400).json({ error: "User not found" });
+
+  const user = users[0];
+  const isMatch = await bcrypt.compare(password, user.password);
+  if (!isMatch) return res.status(400).json({ error: "Wrong password" });
+
+  res.json({ token: generateToken(user.id), user });
+});
+
+// -------------------------------
+// ✦ UPLOAD APP FILE
+// -------------------------------
+app.post("/upload", upload.single("file"), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+
+  const fileUrl = `/uploads/${req.file.filename}`;
+  res.json({ fileUrl });
+});
+
+// -------------------------------
+// ✦ SUBMIT APP TO STORE
+// -------------------------------
+app.post("/apps", authMiddleware, async (req, res) => {
+  const appData = { ...req.body, user_id: req.userId };
+
+  const { data, error } = await fetch(`${SUPABASE_URL}/rest/v1/apps`, {
+    method: "POST",
+    headers: {
+      apikey: SUPABASE_SERVICE_ROLE_KEY,
+      Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(appData),
+  }).then((r) => r.json());
+
+  if (error) return res.status(400).json({ error });
+  res.json({ message: "App submitted", data });
+});
+
+// -------------------------------
+// ✦ GET ALL APPS
+// -------------------------------
 app.get("/apps", async (req, res) => {
-  try {
-    const q = (req.query.search || "").trim();
-    const page = Number(req.query.page || 1);
-    const limit = Math.min(Number(req.query.limit || 20), 100);
-    const offset = (page - 1) * limit;
+  const apps = await fetch(`${SUPABASE_URL}/rest/v1/apps?select=*`, {
+    headers: {
+      apikey: SUPABASE_SERVICE_ROLE_KEY,
+      Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+    },
+  }).then((r) => r.json());
 
-    let builder = supabase
-      .from("apps")
-      .select(
-        "id, owner_id, name, slug, short_description, icon_url, is_published, is_promoted, promote_until, promote_rank, created_at, downloads_count"
-      )
-      .eq("visibility", "public");
+  res.json(apps);
+});
 
-    if (q) {
-      builder = builder.or(
-        `name.ilike.%${q}%, short_description.ilike.%${q}%, slug.ilike.%${q}%`
-      );
+// -------------------------------
+// ✦ PROMOTE AN APP
+// -------------------------------
+app.post("/apps/promote/:id", authMiddleware, async (req, res) => {
+  const { id } = req.params;
+
+  const { data, error } = await fetch(
+    `${SUPABASE_URL}/rest/v1/apps?id=eq.${id}`,
+    {
+      method: "PATCH",
+      headers: {
+        apikey: SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ promoted: true }),
     }
+  ).then((r) => r.json());
 
-    const { data, error } = await builder.range(
-      offset,
-      offset + limit - 1
-    );
-    if (error) throw error;
-
-    const now = new Date();
-    const sorted = (data || []).sort((a, b) => {
-      const aProm =
-        a.is_promoted &&
-        a.promote_until &&
-        new Date(a.promote_until) > now;
-      const bProm =
-        b.is_promoted &&
-        b.promote_until &&
-        new Date(b.promote_until) > now;
-
-      if (aProm && bProm)
-        return (b.promote_rank || 0) - (a.promote_rank || 0);
-      if (aProm) return -1;
-      if (bProm) return 1;
-
-      if (a.is_published !== b.is_published)
-        return a.is_published ? -1 : 1;
-
-      return new Date(b.created_at) - new Date(a.created_at);
-    });
-
-    res.json({ success: true, apps: sorted });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
+  if (error) return res.status(400).json({ error });
+  res.json({ message: "App promoted", data });
 });
 
-// ---------- GET SINGLE APP ----------
-app.get("/apps/:id", async (req, res) => {
-  try {
-    const id = req.params.id;
-    const { data, error } = await supabase
-      .from("apps")
-      .select("*")
-      .eq("id", id)
-      .single();
-    if (error) throw error;
-    res.json({ success: true, app: data });
-  } catch (err) {
-    res.status(404).json({ success: false, error: err.message });
-  }
+// -------------------------------
+// ✦ UNPROMOTE AN APP
+// -------------------------------
+app.post("/apps/unpromote/:id", authMiddleware, async (req, res) => {
+  const { id } = req.params;
+
+  const { data, error } = await fetch(
+    `${SUPABASE_URL}/rest/v1/apps?id=eq.${id}`,
+    {
+      method: "PATCH",
+      headers: {
+        apikey: SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ promoted: false }),
+    }
+  ).then((r) => r.json());
+
+  if (error) return res.status(400).json({ error });
+  res.json({ message: "App unpromoted", data });
 });
 
-// ---------- PROMOTE ----------
-app.post("/admin/apps/:id/promote", auth, async (req, res) => {
-  try {
-    if (!(await isAdmin(req.user.id)))
-      return res.status(403).json({ error: "Admin only" });
-
-    const id = req.params.id;
-    const { days = 7, rank = 10 } = req.body;
-
-    const promote_until = new Date(
-      Date.now() + days * 24 * 60 * 60 * 1000
-    ).toISOString();
-
-    const { error } = await supabase
-      .from("apps")
-      .update({
-        is_promoted: true,
-        promote_until,
-        promote_rank: rank,
-      })
-      .eq("id", id);
-
-    if (error) throw error;
-
-    res.json({
-      success: true,
-      message: "App promoted",
-      promote_until,
-      rank,
-    });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
+// -------------------------------
+// ROOT TEST ROUTE
+// -------------------------------
+app.get("/", (req, res) => {
+  res.send("App Store Backend Running ✔");
 });
 
-// ---------- UNPROMOTE ----------
-app.post("/admin/apps/:id/unpromote", auth, async (req, res) => {
-  try {
-    if (!(await isAdmin(req.user.id)))
-      return res.status(403).json({ error: "Admin only" });
-
-    const id = req.params.id;
-
-    const { error } = await supabase
-      .from("apps")
-      .update({
-        is_promoted: false,
-        promote_until: null,
-        promote_rank: null,
-      })
-      .eq("id", id);
-
-    if (error) throw error;
-
-    res.json({ success: true, message: "Promotion removed" });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-// ---------- ⭐ ADD PROMOTION ROUTES ----------
-app.use("/api/promotions", promotionRoutes);   // ⭐ IMPORTANT LINE
-
-// ---------- START ----------
+// -------------------------------
+// START SERVER
+// -------------------------------
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () =>
-  console.log(`App Store backend running on Port ${PORT}`)
-);
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
