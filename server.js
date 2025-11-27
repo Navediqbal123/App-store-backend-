@@ -1,11 +1,13 @@
-// server.js
-import express from "express";
-import cors from "cors";
-import jwt from "jsonwebtoken";
-import { createClient } from "@supabase/supabase-js";
+// server.js  
+import express from "express";  
+import cors from "cors";  
+import jwt from "jsonwebtoken";  
+import { createClient } from "@supabase/supabase-js";  
 
-const app = express();
-app.use(express.json());
+import promotionRoutes from "./promotion/promotions.routes.js";   // ⭐ NEW LINE ADDED
+
+const app = express();  
+app.use(express.json());  
 app.use(
   cors({
     origin: "*",
@@ -57,7 +59,7 @@ async function isAdmin(userId) {
 // ---------- ROOT ----------
 app.get("/", (req, res) => res.send("App Store Admin API ✔"));
 
-// ---------- UPLOAD FILE (APK / AAB / IMAGE) ----------
+// ---------- UPLOAD FILE ----------
 app.post("/upload", auth, async (req, res) => {
   try {
     const { fileName, fileData, folder = "uploads" } = req.body;
@@ -218,6 +220,9 @@ app.post("/admin/apps/:id/unpromote", auth, async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 });
+
+// ---------- ⭐ ADD PROMOTION ROUTES ----------
+app.use("/api/promotions", promotionRoutes);   // ⭐ IMPORTANT LINE
 
 // ---------- START ----------
 const PORT = process.env.PORT || 3000;
