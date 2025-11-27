@@ -1,10 +1,10 @@
-const express = require("express");
-const router = express.Router();
+import express from "express";
+import * as controller from "./promotions.controller.js";
 
-const controller = require("./promotions.controller.js");
+const router = express.Router();
 
 router.post("/create", controller.createPromotion);
 router.get("/active", controller.getActivePromotions);
 router.put("/toggle/:id", controller.togglePromotion);
 
-module.exports = router;
+export default router;
