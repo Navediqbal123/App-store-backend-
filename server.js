@@ -1,5 +1,5 @@
 /* -----------------------------------
-APP STORE BACKEND - FINAL STABLE VERSION
+APP STORE BACKEND - FINAL + UPLOADS ENDPOINTS ADDED
 ------------------------------------ */
 
 import express from "express";
@@ -13,7 +13,7 @@ dotenv.config();
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "10mb" })); // allow larger payloads for metadata
 
 /* -----------------------------------
 ENV
@@ -34,7 +34,7 @@ const defaultHeaders = {
 };
 
 /* -----------------------------------
-SUPABASE HELPERS (FIXED PATHS)
+SUPABASE HELPERS
 ------------------------------------ */
 async function sbGet(table, query = "") {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}${query}`, {
@@ -90,7 +90,7 @@ function auth(req, res, next) {
 }
 
 /* -----------------------------------
-ADMIN CHECK (FINAL FIXED)
+ADMIN CHECK
 ------------------------------------ */
 async function isAdmin(userId) {
   const user = await sbGet("users", `?id=eq.${userId}&select=role`);
@@ -109,12 +109,10 @@ AUTH
 ------------------------------------ */
 app.post("/auth/signup", async (req, res) => {
   const { email, password, name } = req.body;
-
-  const existing = await sbGet("users", `?email=eq.${email}&select=id`);
-  if (existing.length) return res.status(400).json({ error: "Email exists" });
+  const existing = await sbGet("users", `?email=eq.${encodeURIComponent(email)}&select=id`);
+  if (existing?.length) return res.status(400).json({ error: "Email exists" });
 
   const hashed = await bcrypt.hash(password, 10);
-
   const user = await sbPost("users", {
     email,
     password: hashed,
@@ -122,36 +120,32 @@ app.post("/auth/signup", async (req, res) => {
     role: "user",
     created_at: new Date().toISOString(),
   });
-
   res.json({ success: true, user });
 });
 
 app.post("/auth/login", async (req, res) => {
   const { email, password } = req.body;
-
-  const userData = await sbGet("users", `?email=eq.${email}&select=*`);
-  if (!userData.length)
-    return res.status(400).json({ error: "User not found" });
+  const userData = await sbGet("users", `?email=eq.${encodeURIComponent(email)}&select=*`);
+  if (!userData?.length) return res.status(400).json({ error: "User not found" });
 
   const user = userData[0];
-
-  const match = await bcrypt.compare(password, user.password);
+  const match = await bcrypt.compare(password, user.password || "");
   if (!match) return res.status(400).json({ error: "Wrong password" });
 
   const token = createToken(user.id);
   delete user.password;
-
   res.json({ token, user });
 });
 
 app.get("/auth/me", auth, async (req, res) => {
   const user = await sbGet("users", `?id=eq.${req.userId}&select=*`);
+  if (!user?.length) return res.status(404).json({ error: "User not found" });
   delete user[0].password;
   res.json(user[0]);
 });
 
 /* -----------------------------------
-APPS CRUD
+APPS CRUD (existing)
 ------------------------------------ */
 app.post("/apps", auth, async (req, res) => {
   const data = {
@@ -160,71 +154,207 @@ app.post("/apps", auth, async (req, res) => {
     promoted: false,
     downloads: 0,
     created_at: new Date().toISOString(),
+    status: req.body.status || "approved", // keep backward-compatible
   };
-
   const out = await sbPost("apps", data);
   res.json(out);
 });
 
 app.get("/apps", async (req, res) => {
-  const apps = await sbGet("apps", "?select=*");
+  const apps = await sbGet("apps", "?select=*&status=eq.approved"); // show only approved on store
   res.json(apps);
 });
 
 app.get("/apps/:id", async (req, res) => {
-  const app = await sbGet("apps", `?id=eq.${req.params.id}&select=*`);
-  res.json(app[0]);
+  const app = await sbGet("apps", `?id=eq.${encodeURIComponent(req.params.id)}&select=*`);
+  res.json(app?.[0] || null);
 });
 
 app.put("/apps/:id", auth, async (req, res) => {
-  const data = await sbGet("apps", `?id=eq.${req.params.id}&select=user_id`);
-
+  const data = await sbGet("apps", `?id=eq.${encodeURIComponent(req.params.id)}&select=user_id`);
+  if (!data?.length) return res.status(404).json({ error: "App not found" });
   const owner = data[0].user_id;
-
-  if (req.userId !== owner && !(await isAdmin(req.userId)))
-    return res.status(403).json({ error: "Not allowed" });
-
-  const result = await sbPatch("apps", `?id=eq.${req.params.id}`, req.body);
+  if (req.userId !== owner && !(await isAdmin(req.userId))) return res.status(403).json({ error: "Not allowed" });
+  const result = await sbPatch("apps", `?id=eq.${encodeURIComponent(req.params.id)}`, req.body);
   res.json(result);
 });
 
 app.delete("/apps/:id", auth, async (req, res) => {
-  const data = await sbGet("apps", `?id=eq.${req.params.id}&select=user_id`);
-
+  const data = await sbGet("apps", `?id=eq.${encodeURIComponent(req.params.id)}&select=user_id`);
+  if (!data?.length) return res.status(404).json({ error: "App not found" });
   const owner = data[0].user_id;
-
-  if (req.userId !== owner && !(await isAdmin(req.userId)))
-    return res.status(403).json({ error: "Not allowed" });
-
-  const result = await sbDelete("apps", `?id=eq.${req.params.id}`);
+  if (req.userId !== owner && !(await isAdmin(req.userId))) return res.status(403).json({ error: "Not allowed" });
+  const result = await sbDelete("apps", `?id=eq.${encodeURIComponent(req.params.id)}`);
   res.json(result);
 });
 
 /* -----------------------------------
-ADMIN ROUTES  (100% WORKING)
+NEW: DEVELOPER UPLOAD FLOW (metadata endpoints)
+------------------------------------ */
+
+/**
+ * POST /developer/apps/upload
+ * Body (JSON) expected:
+ * {
+ *  "name":"My App",
+ *  "package_id":"com.example.app",
+ *  "description":"desc",
+ *  "category":"games",
+ *  "logo_url":"https://.../logo.png",        // frontend should upload to Supabase storage and send URL
+ *  "apk_url":"https://.../file.apk",         // OR null
+ *  "aab_url":"https://.../file.aab",         // OR null
+ *  "version_code": 12,
+ *  "version_name":"1.2.0",
+ *  "changelog":"fixed bugs",
+ *  "screenshots": ["https://.../s1.png","..."]
+ * }
+ *
+ * Creates an app record with status = "pending"
+ */
+app.post("/developer/apps/upload", auth, async (req, res) => {
+  try {
+    const body = req.body;
+    // minimal validation
+    if (!body.name || !body.package_id) return res.status(400).json({ error: "name and package_id required" });
+
+    const payload = {
+      name: body.name,
+      package_id: body.package_id,
+      description: body.description || null,
+      category: body.category || null,
+      logo_url: body.logo_url || null,
+      apk_url: body.apk_url || null,
+      aab_url: body.aab_url || null,
+      version_code: body.version_code || null,
+      version_name: body.version_name || null,
+      changelog: body.changelog || null,
+      screenshots: body.screenshots || [],
+      user_id: req.userId,
+      status: "pending",
+      created_at: new Date().toISOString(),
+    };
+
+    const result = await sbPost("apps", payload);
+    res.json({ success: true, data: result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /developer/apps/my
+ * Returns apps uploaded by logged-in developer (all statuses)
+ */
+app.get("/developer/apps/my", auth, async (req, res) => {
+  try {
+    const rows = await sbGet("apps", `?user_id=eq.${encodeURIComponent(req.userId)}&select=*`);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /developer/apps/update/:id
+ * Developer uploads a new version for an app.
+ * Body same as upload (only fields to update). This will set status -> "pending".
+ */
+app.post("/developer/apps/update/:id", auth, async (req, res) => {
+  try {
+    const appId = req.params.id;
+    // check ownership
+    const rows = await sbGet("apps", `?id=eq.${encodeURIComponent(appId)}&select=user_id`);
+    if (!rows?.length) return res.status(404).json({ error: "App not found" });
+    if (rows[0].user_id !== req.userId && !(await isAdmin(req.userId))) return res.status(403).json({ error: "Not allowed" });
+
+    const updatePayload = {
+      ...req.body,
+      status: "pending",
+      updated_at: new Date().toISOString(),
+    };
+    const r = await sbPatch("apps", `?id=eq.${encodeURIComponent(appId)}`, updatePayload);
+    res.json({ success: true, data: r });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* -----------------------------------
+NEW: ADMIN PENDING / APPROVE / REJECT
+------------------------------------ */
+
+/**
+ * GET /admin/apps/pending
+ * Admin-only: list pending apps
+ */
+app.get("/admin/apps/pending", auth, async (req, res) => {
+  try {
+    if (!(await isAdmin(req.userId))) return res.status(403).json({ error: "Admin only" });
+    const pending = await sbGet("apps", `?status=eq.pending&select=*`);
+    res.json(pending);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /admin/apps/approve/:id
+ * Admin-only: approve app (status -> approved)
+ * body optional: { notes: "..." }
+ */
+app.post("/admin/apps/approve/:id", auth, async (req, res) => {
+  try {
+    if (!(await isAdmin(req.userId))) return res.status(403).json({ error: "Admin only" });
+    const id = req.params.id;
+    const r = await sbPatch("apps", `?id=eq.${encodeURIComponent(id)}`, {
+      status: "approved",
+      approved_by: req.userId,
+      approved_at: new Date().toISOString(),
+      notes: req.body.notes || null,
+    });
+    res.json({ success: true, data: r });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /admin/apps/reject/:id
+ * Admin-only: reject app (status -> rejected)
+ * body: { reason: "..." }
+ */
+app.post("/admin/apps/reject/:id", auth, async (req, res) => {
+  try {
+    if (!(await isAdmin(req.userId))) return res.status(403).json({ error: "Admin only" });
+    const id = req.params.id;
+    const r = await sbPatch("apps", `?id=eq.${encodeURIComponent(id)}`, {
+      status: "rejected",
+      rejected_by: req.userId,
+      rejected_at: new Date().toISOString(),
+      reject_reason: req.body.reason || null,
+    });
+    res.json({ success: true, data: r });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* -----------------------------------
+ADMIN STATS / DASHBOARD (existing)
 ------------------------------------ */
 app.get("/admin/stats", auth, async (req, res) => {
-  if (!(await isAdmin(req.userId)))
-    return res.status(403).json({ error: "Admin only" });
-
+  if (!(await isAdmin(req.userId))) return res.status(403).json({ error: "Admin only" });
   const users = await sbGet("users", "?select=id");
   const apps = await sbGet("apps", "?select=id");
-
   res.json({
-    users: users.length,
-    apps: apps.length,
+    users: users?.length || 0,
+    apps: apps?.length || 0,
   });
 });
 
 app.get("/admin/dashboard", auth, async (req, res) => {
-  if (!(await isAdmin(req.userId)))
-    return res.status(403).json({ error: "Admin only" });
-
-  const latest = await sbGet(
-    "apps",
-    "?select=*&order=created_at.desc&limit=10"
-  );
-
+  if (!(await isAdmin(req.userId))) return res.status(403).json({ error: "Admin only" });
+  const latest = await sbGet("apps", "?select=*&order=created_at.desc&limit=10");
   res.json({ latest });
 });
 
