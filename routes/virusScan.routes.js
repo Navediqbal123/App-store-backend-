@@ -1,5 +1,6 @@
-const express = require("express");
-const axios = require("axios");
+import express from "express";
+import axios from "axios";
+
 const router = express.Router();
 
 router.post("/virus-scan", async (req, res) => {
@@ -16,8 +17,8 @@ router.post("/virus-scan", async (req, res) => {
       {
         headers: {
           "x-apikey": process.env.VIRUSTOTAL_API_KEY,
-          "Content-Type": "application/x-www-form-urlencoded"
-        }
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
       }
     );
 
@@ -25,9 +26,8 @@ router.post("/virus-scan", async (req, res) => {
 
     return res.json({
       scanned: true,
-      analysisId
+      analysisId,
     });
-
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
