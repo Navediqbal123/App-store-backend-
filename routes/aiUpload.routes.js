@@ -1,5 +1,6 @@
-const express = require("express");
-const axios = require("axios");
+import express from "express";
+import axios from "axios";
+
 const router = express.Router();
 
 router.post("/ai-upload", async (req, res) => {
@@ -28,7 +29,8 @@ Permissions: ${permissions}
       },
       {
         headers: {
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          "Content-Type": "application/json"
         }
       }
     );
