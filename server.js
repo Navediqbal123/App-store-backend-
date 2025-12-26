@@ -9,11 +9,23 @@ import dotenv from "dotenv";
 import bcrypt from "bcryptjs";
 import fetch from "node-fetch";
 
+/* 🔹 EXTRA ROUTES (AI / VIRUS / STATS / CHATBOT) */
+import virusScanRoutes from "./routes/virusScan.routes.js";
+import aiUploadRoutes from "./routes/aiUpload.routes.js";
+import adminStatsRoutes from "./routes/adminStats.routes.js";
+import chatbotRoutes from "./routes/chatbot.routes.js";
+
 dotenv.config();
 
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: "10mb" })); // allow larger payloads for metadata
+
+/* 🔹 REGISTER EXTRA ROUTES */
+app.use("/api", virusScanRoutes);
+app.use("/api", aiUploadRoutes);
+app.use("/api/admin", adminStatsRoutes);
+app.use("/api", chatbotRoutes);
 
 /* -----------------------------------
 ENV
