@@ -32,4 +32,4 @@ router.post("/chatbot-help", async (req, res) => {
   });
 });
 
-module.exports = router;
+export default router;
