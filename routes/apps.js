@@ -1,8 +1,10 @@
-const express = require("express");
+// ✅ START (ESM – सही)
+import express from "express";
+import multer from "multer";
+import path from "path";
+import { supabase } from "../supabaseClient.js";
+
 const router = express.Router();
-const { supabase } = require("../supabaseClient");
-const multer = require("multer");
-const path = require("path");
 
 // Memory storage for apk/aab uploads
 const storage = multer.memoryStorage();
@@ -111,4 +113,4 @@ router.get("/promoted", async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;
