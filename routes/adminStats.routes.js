@@ -22,4 +22,4 @@ router.get("/stats", async (req, res) => {
   res.json(data);
 });
 
-module.exports = router;
+export default router;
