@@ -39,10 +39,12 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !JWT_SECRET) {
   process.exit(1);
 }
 
+/* ✅ EXACT PLACE — YAHI PAR AANA CHAHIYE */
 const defaultHeaders = {
   apikey: SUPABASE_SERVICE_ROLE_KEY,
   Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
   "Content-Type": "application/json",
+  Prefer: "return=representation",
 };
 
 /* -----------------------------------
