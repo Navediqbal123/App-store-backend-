@@ -8,20 +8,24 @@ router.post("/chatbot-help", async (req, res) => {
     const { errorMessage } = req.body;
 
     if (!errorMessage) {
-      return res.json({ reply: "No message provided" });
+      return res.status(400).json({ error: "errorMessage required" });
     }
 
     const response = await fetch(
-      "https://api.groq.com/openai/v1/chat/completions",
+      "https://api.openai.com/v1/chat/completions",
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
         },
         body: JSON.stringify({
-          model: "llama3-70b-8192",
+          model: "gpt-4o-mini",
           messages: [
+            {
+              role: "system",
+              content: "You are a helpful app store support assistant.",
+            },
             {
               role: "user",
               content: errorMessage,
@@ -33,14 +37,12 @@ router.post("/chatbot-help", async (req, res) => {
 
     const data = await response.json();
 
-    if (!data.choices || !data.choices[0]) {
-      return res.json({ reply: "AI service temporarily unavailable" });
-    }
+    res.json({
+      reply: data.choices[0].message.content,
+    });
 
-    res.json({ reply: data.choices[0].message.content });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ reply: "AI service temporarily unavailable" });
+    res.status(500).json({ error: "Chatbot failed" });
   }
 });
 
