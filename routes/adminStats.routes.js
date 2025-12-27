@@ -15,20 +15,23 @@ router.post("/log", async (req, res) => {
     const SUPABASE_URL = process.env.SUPABASE_URL;
     const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-    const response = await fetch(`${SUPABASE_URL}/rest/v1/admin_stats`, {
-      method: "POST",
-      headers: {
-        apikey: KEY,
-        Authorization: `Bearer ${KEY}`,
-        "Content-Type": "application/json",
-        Prefer: "return=representation",
-      },
-      body: JSON.stringify({ type, result }),
-    });
+    const response = await fetch(
+      `${SUPABASE_URL}/rest/v1/admin_ai_insights`,
+      {
+        method: "POST",
+        headers: {
+          apikey: KEY,
+          Authorization: `Bearer ${KEY}`,
+          "Content-Type": "application/json",
+          Prefer: "return=representation",
+        },
+        body: JSON.stringify({ type, result }),
+      }
+    );
 
     const data = await response.json();
     res.json({ success: true, data });
-  } catch (e) {
+  } catch {
     res.status(500).json({ error: "Log failed" });
   }
 });
@@ -40,7 +43,7 @@ router.get("/insights", async (req, res) => {
     const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
     const response = await fetch(
-      `${SUPABASE_URL}/rest/v1/admin_stats?select=type,result`,
+      `${SUPABASE_URL}/rest/v1/admin_ai_insights?select=type,result`,
       {
         headers: {
           apikey: KEY,
@@ -59,7 +62,7 @@ router.get("/insights", async (req, res) => {
     };
 
     res.json(summary);
-  } catch (e) {
+  } catch {
     res.status(500).json({ error: "Insights failed" });
   }
 });
