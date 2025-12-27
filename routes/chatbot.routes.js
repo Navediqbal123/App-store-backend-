@@ -1,5 +1,5 @@
 import express from "express";
-import axios from "axios";
+import fetch from "node-fetch";
 
 const router = express.Router();
 
@@ -7,32 +7,38 @@ router.post("/chatbot-help", async (req, res) => {
   try {
     const { errorMessage } = req.body;
 
-    const response = await axios.post(
-      "https://api.openai.com/v1/chat/completions",
+    if (!errorMessage) {
+      return res.status(400).json({ error: "errorMessage required" });
+    }
+
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${process.env.GEMINI_API_KEY}`,
       {
-        model: "gpt-4o-mini",
-        messages: [
-          {
-            role: "system",
-            content: "You are a helpful app store support assistant."
-          },
-          {
-            role: "user",
-            content: `Explain this error in simple words and how to fix it: ${errorMessage}`
-          }
-        ]
-      },
-      {
+        method: "POST",
         headers: {
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-          "Content-Type": "application/json"
-        }
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  text: `Explain this error in simple words and how to fix it:\n${errorMessage}`,
+                },
+              ],
+            },
+          ],
+        }),
       }
     );
 
-    res.json({
-      reply: response.data.choices[0].message.content
-    });
+    const data = await response.json();
+
+    const reply =
+      data?.candidates?.[0]?.content?.parts?.[0]?.text ||
+      "No response from Gemini";
+
+    res.json({ reply });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
