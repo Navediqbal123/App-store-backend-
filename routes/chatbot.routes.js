@@ -7,6 +7,10 @@ router.post("/chatbot-help", async (req, res) => {
   try {
     const { errorMessage } = req.body;
 
+    if (!errorMessage) {
+      return res.status(400).json({ error: "errorMessage required" });
+    }
+
     const response = await fetch(
       "https://api.groq.com/openai/v1/chat/completions",
       {
@@ -23,13 +27,25 @@ router.post("/chatbot-help", async (req, res) => {
               content: errorMessage,
             },
           ],
+          temperature: 0.4,
         }),
       }
     );
 
     const data = await response.json();
-    res.json({ reply: data.choices[0].message.content });
-  } catch (e) {
+
+    // 🔒 SAFETY CHECK (VERY IMPORTANT)
+    if (!data.choices || !data.choices[0]) {
+      return res.json({
+        reply: "AI service temporarily unavailable",
+      });
+    }
+
+    res.json({
+      reply: data.choices[0].message.content,
+    });
+  } catch (err) {
+    console.error("Groq error:", err);
     res.status(500).json({ error: "Groq failed" });
   }
 });
