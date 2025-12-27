@@ -15,6 +15,7 @@ import aiUploadRoutes from "./routes/aiUpload.routes.js";
 import adminStatsRoutes from "./routes/adminStats.routes.js";
 import chatbotRoutes from "./routes/chatbot.routes.js";
 import adminInsightsRoutes from "./routes/adminInsights.routes.js";
+import cloneCheckRoutes from "./routes/cloneCheck.routes.js";
 
 dotenv.config();
 
@@ -28,6 +29,7 @@ app.use("/api", aiUploadRoutes);
 app.use("/api/admin", adminStatsRoutes);
 app.use("/api", chatbotRoutes);
 app.use("/api", adminInsightsRoutes);
+app.use("/api", cloneCheckRoutes);
 
 /* -----------------------------------
 ENV
