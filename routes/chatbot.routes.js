@@ -12,7 +12,7 @@ router.post("/chatbot-help", async (req, res) => {
     }
 
     const response = await fetch(
-      "https://api.openai.com/v1/chat/completions",
+      "https://api.openai.com/v1/responses",
       {
         method: "POST",
         headers: {
@@ -21,27 +21,21 @@ router.post("/chatbot-help", async (req, res) => {
         },
         body: JSON.stringify({
           model: "gpt-4o-mini",
-          messages: [
-            {
-              role: "system",
-              content: "You are a helpful app store support assistant.",
-            },
-            {
-              role: "user",
-              content: errorMessage,
-            },
-          ],
+          input: `User error: ${errorMessage}\nGive clear steps to fix it.`,
         }),
       }
     );
 
     const data = await response.json();
 
-    res.json({
-      reply: data.choices[0].message.content,
-    });
+    const reply =
+      data.output?.[0]?.content?.[0]?.text ||
+      "AI could not generate a response";
+
+    res.json({ reply });
 
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: "Chatbot failed" });
   }
 });
