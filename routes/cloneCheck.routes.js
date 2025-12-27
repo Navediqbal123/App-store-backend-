@@ -3,19 +3,28 @@ import fetch from "node-fetch";
 
 const router = express.Router();
 
+/*
+POST /api/clone-check
+Body:
+{
+  "package_id": "com.my.app",
+  "name": "My App"
+}
+*/
+
 router.post("/clone-check", async (req, res) => {
   try {
-    const { app_id, package_id, name, category } = req.body;
+    const { package_id, name } = req.body;
 
-    if (!app_id || !package_id) {
-      return res.status(400).json({ error: "app_id & package_id required" });
+    if (!package_id && !name) {
+      return res.status(400).json({ error: "package_id or name required" });
     }
 
     const SUPABASE_URL = process.env.SUPABASE_URL;
     const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-    // 🔍 Check same package_id
-    const check = await fetch(
+    // 🔍 package_id match (strong clone)
+    const pkgRes = await fetch(
       `${SUPABASE_URL}/rest/v1/apps?package_id=eq.${package_id}&select=id`,
       {
         headers: {
@@ -25,31 +34,38 @@ router.post("/clone-check", async (req, res) => {
       }
     );
 
-    const rows = await check.json();
+    const pkgData = await pkgRes.json();
 
-    let isClone = rows.length > 1;
-    let matchedWith = isClone ? rows[0].id : null;
+    if (pkgData.length > 0) {
+      return res.json({
+        clone: true,
+        reason: "Package ID already exists",
+      });
+    }
 
-    // 🧾 Log result
-    await fetch(`${SUPABASE_URL}/rest/v1/app_clones`, {
-      method: "POST",
-      headers: {
-        apikey: KEY,
-        Authorization: `Bearer ${KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        app_id,
-        package_id,
-        is_clone: isClone,
-        matched_with: matchedWith,
-      }),
-    });
+    // 🔍 name match (soft clone)
+    const nameRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/apps?name=ilike.%${name}%&select=id`,
+      {
+        headers: {
+          apikey: KEY,
+          Authorization: `Bearer ${KEY}`,
+        },
+      }
+    );
+
+    const nameData = await nameRes.json();
+
+    if (nameData.length > 0) {
+      return res.json({
+        clone: true,
+        reason: "Similar app name exists",
+      });
+    }
 
     res.json({
-      clone_checked: true,
-      is_clone: isClone,
-      matched_with: matchedWith,
+      clone: false,
+      reason: "No duplicate found",
     });
 
   } catch (err) {
