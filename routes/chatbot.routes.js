@@ -12,30 +12,42 @@ router.post("/chatbot-help", async (req, res) => {
     }
 
     const response = await fetch(
-      "https://api.openai.com/v1/responses",
+      "https://openrouter.ai/api/v1/chat/completions",
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+          "HTTP-Referer": "https://app-store-backend-iodn.onrender.com",
+          "X-Title": "App Store Backend"
         },
         body: JSON.stringify({
-          model: "gpt-4o-mini",
-          input: `User error: ${errorMessage}\nGive clear steps to fix it.`,
-        }),
+          model: "openai/gpt-4o-mini",
+          messages: [
+            {
+              role: "system",
+              content: "You are a helpful app store support assistant. Explain errors simply and clearly."
+            },
+            {
+              role: "user",
+              content: errorMessage
+            }
+          ]
+        })
       }
     );
 
     const data = await response.json();
 
-    const reply =
-      data.output?.[0]?.content?.[0]?.text ||
-      "AI could not generate a response";
+    if (!data.choices) {
+      return res.status(500).json({ error: "AI response failed", data });
+    }
 
-    res.json({ reply });
+    res.json({
+      reply: data.choices[0].message.content
+    });
 
   } catch (err) {
-    console.error(err);
     res.status(500).json({ error: "Chatbot failed" });
   }
 });
