@@ -14,6 +14,7 @@ import virusScanRoutes from "./routes/virusScan.routes.js";
 import aiUploadRoutes from "./routes/aiUpload.routes.js";
 import adminStatsRoutes from "./routes/adminStats.routes.js";
 import chatbotRoutes from "./routes/chatbot.routes.js";
+import adminInsightsRoutes from "./routes/adminInsights.routes.js";
 
 dotenv.config();
 
@@ -26,6 +27,7 @@ app.use("/api", virusScanRoutes);
 app.use("/api", aiUploadRoutes);
 app.use("/api/admin", adminStatsRoutes);
 app.use("/api", chatbotRoutes);
+app.use("/api", adminInsightsRoutes);
 
 /* -----------------------------------
 ENV
