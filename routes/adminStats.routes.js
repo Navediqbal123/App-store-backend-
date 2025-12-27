@@ -28,12 +28,12 @@ router.post("/log", async (req, res) => {
 
     const data = await response.json();
     res.json({ success: true, data });
-  } catch {
+  } catch (e) {
     res.status(500).json({ error: "Log failed" });
   }
 });
 
-/* 🔹 ADMIN INSIGHTS */
+/* 🔹 ADMIN INSIGHTS (summary) */
 router.get("/insights", async (req, res) => {
   try {
     const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -59,7 +59,7 @@ router.get("/insights", async (req, res) => {
     };
 
     res.json(summary);
-  } catch {
+  } catch (e) {
     res.status(500).json({ error: "Insights failed" });
   }
 });
