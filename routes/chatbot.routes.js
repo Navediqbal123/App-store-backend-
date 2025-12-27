@@ -8,7 +8,7 @@ router.post("/chatbot-help", async (req, res) => {
     const { errorMessage } = req.body;
 
     if (!errorMessage) {
-      return res.status(400).json({ error: "errorMessage required" });
+      return res.json({ reply: "No message provided" });
     }
 
     const response = await fetch(
@@ -20,33 +20,27 @@ router.post("/chatbot-help", async (req, res) => {
           Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
         },
         body: JSON.stringify({
-          model: "llama3-8b-8192",
+          model: "llama3-70b-8192",
           messages: [
             {
               role: "user",
               content: errorMessage,
             },
           ],
-          temperature: 0.4,
         }),
       }
     );
 
     const data = await response.json();
 
-    // 🔒 SAFETY CHECK (VERY IMPORTANT)
     if (!data.choices || !data.choices[0]) {
-      return res.json({
-        reply: "AI service temporarily unavailable",
-      });
+      return res.json({ reply: "AI service temporarily unavailable" });
     }
 
-    res.json({
-      reply: data.choices[0].message.content,
-    });
+    res.json({ reply: data.choices[0].message.content });
   } catch (err) {
-    console.error("Groq error:", err);
-    res.status(500).json({ error: "Groq failed" });
+    console.error(err);
+    res.status(500).json({ reply: "AI service temporarily unavailable" });
   }
 });
 
