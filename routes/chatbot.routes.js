@@ -6,39 +6,31 @@ const router = express.Router();
 router.post("/chatbot-help", async (req, res) => {
   try {
     const { errorMessage } = req.body;
-    if (!errorMessage) {
-      return res.status(400).json({ error: "errorMessage required" });
-    }
-
-    const apiKey = process.env.GEMINI_API_KEY;
 
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+      "https://api.groq.com/openai/v1/chat/completions",
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+        },
         body: JSON.stringify({
-          contents: [
+          model: "llama3-8b-8192",
+          messages: [
             {
-              parts: [
-                {
-                  text: `Help developer to fix this error:\n${errorMessage}`
-                }
-              ]
-            }
-          ]
-        })
+              role: "user",
+              content: errorMessage,
+            },
+          ],
+        }),
       }
     );
 
     const data = await response.json();
-    const reply =
-      data?.candidates?.[0]?.content?.parts?.[0]?.text ||
-      "No response from Gemini";
-
-    res.json({ reply });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.json({ reply: data.choices[0].message.content });
+  } catch (e) {
+    res.status(500).json({ error: "Groq failed" });
   }
 });
 
