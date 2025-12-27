@@ -3,6 +3,16 @@ import fetch from "node-fetch";
 
 const router = express.Router();
 
+/*
+POST /api/ai-upload
+Body:
+{
+  "appName": "My App",
+  "category": "Tools",
+  "permissions": "Camera, Storage"
+}
+*/
+
 router.post("/ai-upload", async (req, res) => {
   try {
     const { appName, category, permissions } = req.body;
@@ -11,34 +21,52 @@ router.post("/ai-upload", async (req, res) => {
       return res.status(400).json({ error: "appName required" });
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
-
-    const prompt = `
-Generate app description, tags and safety notes.
-App: ${appName}
-Category: ${category || "N/A"}
-Permissions: ${permissions || "N/A"}
-`;
-
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+      "https://openrouter.ai/api/v1/chat/completions",
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }]
-        })
+          model: "openai/gpt-4o-mini",
+          messages: [
+            {
+              role: "system",
+              content: "You are an App Store AI assistant.",
+            },
+            {
+              role: "user",
+              content: `
+Generate:
+- App description
+- 5 tags
+- Short privacy summary
+
+App name: ${appName}
+Category: ${category || "General"}
+Permissions: ${permissions || "None"}
+              `,
+            },
+          ],
+        }),
       }
     );
 
     const data = await response.json();
-    const result =
-      data?.candidates?.[0]?.content?.parts?.[0]?.text ||
-      "No response from Gemini";
 
-    res.json({ result });
+    if (!data.choices) {
+      return res.status(500).json({ error: "AI response failed" });
+    }
+
+    res.json({
+      aiGenerated: true,
+      content: data.choices[0].message.content,
+    });
+
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: "AI upload failed" });
   }
 });
 
