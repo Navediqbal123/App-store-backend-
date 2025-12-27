@@ -1,46 +1,42 @@
 import express from "express";
-import axios from "axios";
+import fetch from "node-fetch";
 
 const router = express.Router();
 
 router.post("/ai-upload", async (req, res) => {
   try {
-    const { appName, permissions, category } = req.body;
+    const { appName, category, permissions } = req.body;
 
-    const aiResponse = await axios.post(
-      "https://api.openai.com/v1/chat/completions",
+    if (!appName) {
+      return res.status(400).json({ error: "appName required" });
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY;
+
+    const prompt = `
+Generate app description, tags and safety notes.
+App: ${appName}
+Category: ${category || "N/A"}
+Permissions: ${permissions || "N/A"}
+`;
+
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
       {
-        model: "gpt-4o-mini",
-        messages: [
-          {
-            role: "system",
-            content: "You are an App Store AI assistant."
-          },
-          {
-            role: "user",
-            content: `
-Generate app description, tags and privacy summary.
-App name: ${appName}
-Category: ${category}
-Permissions: ${permissions}
-            `
-          }
-        ]
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-          "Content-Type": "application/json"
-        }
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }]
+        })
       }
     );
 
-    res.json({
-      status: "PENDING",
-      aiGenerated: true,
-      content: aiResponse.data.choices[0].message.content
-    });
+    const data = await response.json();
+    const result =
+      data?.candidates?.[0]?.content?.parts?.[0]?.text ||
+      "No response from Gemini";
 
+    res.json({ result });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
