@@ -1,5 +1,6 @@
 /* -----------------------------------
-APP STORE BACKEND - FINAL (AUTO VERSION + CLONE CHECK ADDED)
+APP STORE BACKEND - FINAL
+(AUTO VERSION + CLONE CHECK + PROMOTIONS READY)
 ------------------------------------ */
 
 import express from "express";
@@ -12,8 +13,8 @@ import fetch from "node-fetch";
 /* 🔹 ROUTES */
 import virusScanRoutes from "./routes/virusScan.routes.js";
 import aiUploadRoutes from "./routes/aiUpload.routes.js";
-import adminStatsRoutes from "./routes/adminStats.routes.js";
 import chatbotRoutes from "./routes/chatbot.routes.js";
+import adminStatsRoutes from "./routes/adminStats.routes.js";
 import adminInsightsRoutes from "./routes/adminInsights.routes.js";
 import cloneCheckRoutes from "./routes/cloneCheck.routes.js";
 import promotionRoutes from "./routes/promotions.routes.js";
@@ -29,9 +30,9 @@ app.use("/api", virusScanRoutes);
 app.use("/api", aiUploadRoutes);
 app.use("/api", chatbotRoutes);
 app.use("/api", cloneCheckRoutes);
+app.use("/api/promotions", promotionRoutes);
 app.use("/api/admin", adminStatsRoutes);
 app.use("/api/admin", adminInsightsRoutes);
-app.use("/api/promotions", promotionRoutes);
 
 /* -----------------------------------
 ENV
@@ -83,14 +84,6 @@ async function sbPatch(table, query, body) {
   return r.json();
 }
 
-async function sbDelete(table, query) {
-  const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}${query}`, {
-    method: "DELETE",
-    headers: defaultHeaders,
-  });
-  return r.json();
-}
-
 /* -----------------------------------
 AUTH
 ------------------------------------ */
@@ -101,6 +94,7 @@ function createToken(id) {
 function auth(req, res, next) {
   const token = req.headers.authorization?.split(" ")[1];
   if (!token) return res.status(401).json({ error: "Unauthorized" });
+
   try {
     const d = jwt.verify(token, JWT_SECRET);
     req.userId = d.id;
@@ -125,13 +119,33 @@ AUTH ROUTES
 ------------------------------------ */
 app.post("/auth/login", async (req, res) => {
   const { email, password } = req.body;
-  const u = await sbGet("users", `?email=eq.${encodeURIComponent(email)}&select=*`);
+  const u = await sbGet(
+    "users",
+    `?email=eq.${encodeURIComponent(email)}&select=*`
+  );
   if (!u?.length) return res.status(400).json({ error: "User not found" });
+
   const ok = await bcrypt.compare(password, u[0].password || "");
   if (!ok) return res.status(400).json({ error: "Wrong password" });
+
   const token = createToken(u[0].id);
   delete u[0].password;
   res.json({ token, user: u[0] });
+});
+
+/* -----------------------------------
+PUBLIC APP STORE (❗ FIXED)
+------------------------------------ */
+app.get("/apps", async (req, res) => {
+  try {
+    const apps = await sbGet(
+      "apps",
+      "?status=eq.approved&select=*"
+    );
+    res.json(apps);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 /* -----------------------------------
@@ -143,7 +157,6 @@ app.post("/developer/apps/upload", auth, async (req, res) => {
     if (!body.name || !body.package_id)
       return res.status(400).json({ error: "name & package_id required" });
 
-    /* 🔹 CLONE CHECK */
     const clone = await sbGet(
       "apps",
       `?package_id=eq.${body.package_id}&select=id`
@@ -155,7 +168,6 @@ app.post("/developer/apps/upload", auth, async (req, res) => {
       });
     }
 
-    /* 🔹 AUTO VERSION CODE */
     const last = await sbGet(
       "apps",
       `?package_id=eq.${body.package_id}&order=version_code.desc&limit=1&select=version_code`
@@ -171,7 +183,7 @@ app.post("/developer/apps/upload", auth, async (req, res) => {
       logo_url: body.logo_url || null,
       apk_url: body.apk_url || null,
       aab_url: body.aab_url || null,
-      version_code: nextVersionCode, // ✅ AUTO
+      version_code: nextVersionCode,
       version_name: body.version_name || null,
       changelog: body.changelog || null,
       screenshots: body.screenshots || [],
@@ -188,33 +200,7 @@ app.post("/developer/apps/upload", auth, async (req, res) => {
 });
 
 /* -----------------------------------
-UPDATE APP (AUTO VERSION INCREMENT)
------------------------------------- */
-app.post("/developer/apps/update/:id", auth, async (req, res) => {
-  try {
-    const id = req.params.id;
-    const cur = await sbGet("apps", `?id=eq.${id}&select=user_id,version_code`);
-    if (!cur.length) return res.status(404).json({ error: "Not found" });
-    if (cur[0].user_id !== req.userId && !(await isAdmin(req.userId)))
-      return res.status(403).json({ error: "Not allowed" });
-
-    const nextVersionCode = (cur[0].version_code || 0) + 1;
-
-    const out = await sbPatch("apps", `?id=eq.${id}`, {
-      ...req.body,
-      version_code: nextVersionCode,
-      status: "pending",
-      updated_at: new Date().toISOString(),
-    });
-
-    res.json({ success: true, data: out });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-/* -----------------------------------
-ADMIN APPROVAL
+ADMIN APPROVE APP
 ------------------------------------ */
 app.post("/admin/apps/approve/:id", auth, async (req, res) => {
   if (!(await isAdmin(req.userId)))
@@ -225,11 +211,12 @@ app.post("/admin/apps/approve/:id", auth, async (req, res) => {
     approved_by: req.userId,
     approved_at: new Date().toISOString(),
   });
+
   res.json(out);
 });
 
 /* -----------------------------------
-START
+START SERVER
 ------------------------------------ */
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () =>
