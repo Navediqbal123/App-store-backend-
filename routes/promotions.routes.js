@@ -84,4 +84,27 @@ router.get("/developer/:appId", auth, async (req, res) => {
   }
 });
 
+/* ===============================
+USER – ACTIVE PROMOTIONS (MISSING PART)
+GET /api/promotions/active
+=============================== */
+router.get("/active", async (req, res) => {
+  try {
+    const response = await fetch(
+      `${SUPABASE_URL}/rest/v1/promotions?is_active=eq.true&select=*`,
+      {
+        headers: {
+          apikey: KEY,
+          Authorization: `Bearer ${KEY}`,
+        },
+      }
+    );
+
+    const data = await response.json();
+    res.json({ success: true, data });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 export default router;
