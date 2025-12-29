@@ -1,67 +1,82 @@
 import express from "express";
 import fetch from "node-fetch";
+import jwt from "jsonwebtoken";
 
 const router = express.Router();
 
 /* ===============================
-ADMIN – CREATE / UPDATE PROMOTION
+ADMIN AUTH CHECK
 =============================== */
+async function requireAdmin(req) {
+  const token = req.headers.authorization?.split(" ")[1];
+  if (!token) return false;
 
-/*
-POST /api/promotions/admin/create
-Body:
-{
-  "title": "App Promotion",
-  "type": "app",        // app | company
-  "app_id": "UUID",     // nullable for company promo
-  "media_url": "https://video-or-image",
-  "show_home": true,
-  "show_search": true,
-  "show_app_page": true,
-  "is_active": true
+  const decoded = jwt.verify(token, process.env.JWT_SECRET);
+  const userId = decoded.id;
+
+  const res = await fetch(
+    `${process.env.SUPABASE_URL}/rest/v1/users?id=eq.${userId}&select=role`,
+    {
+      headers: {
+        apikey: process.env.SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+      },
+    }
+  );
+
+  const data = await res.json();
+  return data?.[0]?.role === "admin";
 }
-*/
+
+/* ===============================
+ADMIN – CREATE PROMOTION
+=============================== */
 router.post("/admin/create", async (req, res) => {
   try {
-    const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    const URL = process.env.SUPABASE_URL;
+    if (!(await requireAdmin(req)))
+      return res.status(403).json({ error: "Admin only" });
 
-    const response = await fetch(`${URL}/rest/v1/promotions`, {
-      method: "POST",
-      headers: {
-        apikey: KEY,
-        Authorization: `Bearer ${KEY}`,
-        "Content-Type": "application/json",
-        Prefer: "return=representation",
-      },
-      body: JSON.stringify(req.body),
-    });
+    const response = await fetch(
+      `${process.env.SUPABASE_URL}/rest/v1/promotions`,
+      {
+        method: "POST",
+        headers: {
+          apikey: process.env.SUPABASE_SERVICE_ROLE_KEY,
+          Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+          "Content-Type": "application/json",
+          Prefer: "return=representation",
+        },
+        body: JSON.stringify(req.body),
+      }
+    );
 
     const data = await response.json();
     res.json({ success: true, data });
-  } catch {
-    res.status(500).json({ error: "Promotion create failed" });
+  } catch (e) {
+    res.status(500).json({ error: "Create failed" });
   }
 });
 
 /* ===============================
-ADMIN – TOGGLE PROMOTION
+ADMIN – TOGGLE PROMOTION (FIXED)
 =============================== */
 router.post("/admin/toggle/:id", async (req, res) => {
   try {
-    const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    const URL = process.env.SUPABASE_URL;
+    if (!(await requireAdmin(req)))
+      return res.status(403).json({ error: "Admin only" });
 
     const response = await fetch(
-      `${URL}/rest/v1/promotions?id=eq.${req.params.id}`,
+      `${process.env.SUPABASE_URL}/rest/v1/promotions?id=eq.${req.params.id}`,
       {
         method: "PATCH",
         headers: {
-          apikey: KEY,
-          Authorization: `Bearer ${KEY}`,
+          apikey: process.env.SUPABASE_SERVICE_ROLE_KEY,
+          Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ is_active: req.body.is_active }),
+        body: JSON.stringify({
+          is_active: req.body.is_active,
+        }),
       }
     );
 
@@ -73,53 +88,19 @@ router.post("/admin/toggle/:id", async (req, res) => {
 });
 
 /* ===============================
-USER – FETCH PROMOTIONS
+USER – FETCH ACTIVE PROMOS
 =============================== */
 router.get("/active", async (req, res) => {
-  try {
-    const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    const URL = process.env.SUPABASE_URL;
-
-    const response = await fetch(
-      `${URL}/rest/v1/promotions?is_active=eq.true&select=*`,
-      {
-        headers: {
-          apikey: KEY,
-          Authorization: `Bearer ${KEY}`,
-        },
-      }
-    );
-
-    const data = await response.json();
-    res.json(data);
-  } catch {
-    res.status(500).json({ error: "Fetch failed" });
-  }
-});
-
-/* ===============================
-DEVELOPER – READ ONLY
-=============================== */
-router.get("/developer/:appId", async (req, res) => {
-  try {
-    const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    const URL = process.env.SUPABASE_URL;
-
-    const response = await fetch(
-      `${URL}/rest/v1/promotions?app_id=eq.${req.params.appId}&select=*`,
-      {
-        headers: {
-          apikey: KEY,
-          Authorization: `Bearer ${KEY}`,
-        },
-      }
-    );
-
-    const data = await response.json();
-    res.json(data);
-  } catch {
-    res.status(500).json({ error: "Developer fetch failed" });
-  }
+  const r = await fetch(
+    `${process.env.SUPABASE_URL}/rest/v1/promotions?is_active=eq.true`,
+    {
+      headers: {
+        apikey: process.env.SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+      },
+    }
+  );
+  res.json(await r.json());
 });
 
 export default router;
