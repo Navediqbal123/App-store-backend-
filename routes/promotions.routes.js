@@ -23,7 +23,8 @@ function auth(req, res, next) {
 }
 
 /* ===============================
-ADMIN – TOGGLE PROMOTION (FIXED)
+ADMIN – TOGGLE PROMOTION
+POST /api/promotions/admin/toggle/:id
 =============================== */
 router.post("/admin/toggle/:id", auth, async (req, res) => {
   try {
@@ -40,6 +41,34 @@ router.post("/admin/toggle/:id", auth, async (req, res) => {
         body: JSON.stringify({
           is_active: req.body.is_active,
         }),
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      return res.status(400).json({ error: data });
+    }
+
+    res.json({ success: true, data });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/* ===============================
+DEVELOPER – READ ONLY PROMOTIONS
+GET /api/promotions/developer/:appId
+=============================== */
+router.get("/developer/:appId", auth, async (req, res) => {
+  try {
+    const response = await fetch(
+      `${SUPABASE_URL}/rest/v1/promotions?app_id=eq.${req.params.appId}&select=*`,
+      {
+        headers: {
+          apikey: KEY,
+          Authorization: `Bearer ${KEY}`,
+        },
       }
     );
 
