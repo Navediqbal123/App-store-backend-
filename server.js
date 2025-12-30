@@ -18,6 +18,7 @@ import adminStatsRoutes from "./routes/adminStats.routes.js";
 import adminInsightsRoutes from "./routes/adminInsights.routes.js";
 import cloneCheckRoutes from "./routes/cloneCheck.routes.js";
 import promotionRoutes from "./routes/promotions.routes.js";
+import developerAppsRoutes from "./routes/apps.js";
 
 dotenv.config();
 
@@ -33,6 +34,7 @@ app.use("/api", cloneCheckRoutes);
 app.use("/api/promotions", promotionRoutes);
 app.use("/api/admin", adminStatsRoutes);
 app.use("/api/admin", adminInsightsRoutes);
+app.use("/api/developer/apps", developerAppsRoutes);
 
 /* -----------------------------------
 ENV
