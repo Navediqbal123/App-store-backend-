@@ -10,7 +10,9 @@ const router = express.Router();
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
-// Create new App (with APK/AAB upload)
+/* ======================================================
+   CREATE NEW APP (UPLOAD APK / AAB)
+====================================================== */
 router.post("/upload", upload.single("file"), async (req, res) => {
   try {
     const { name, description, category, developerId } = req.body;
@@ -20,7 +22,6 @@ router.post("/upload", upload.single("file"), async (req, res) => {
       return res.status(400).json({ error: "File (APK or AAB) is required" });
     }
 
-    const fileExt = path.extname(file.originalname);
     const fileName = `uploads/${Date.now()}_${file.originalname}`;
 
     // Upload file to Supabase storage
@@ -38,7 +39,7 @@ router.post("/upload", upload.single("file"), async (req, res) => {
       .from("app-store-files")
       .getPublicUrl(fileName).data.publicUrl;
 
-    // Insert App record in DB
+    // Insert app record
     const { data, error } = await supabase.from("apps").insert([
       {
         name,
@@ -46,24 +47,22 @@ router.post("/upload", upload.single("file"), async (req, res) => {
         category,
         developer_id: developerId,
         file_url: fileUrl,
-        promoted: false, // default promotion status
+        promoted: false,
+        status: "pending",
       },
     ]);
 
-    if (error) {
-      return res.status(500).json({ error: error.message });
-    }
+    if (error) return res.status(500).json({ error: error.message });
 
-    res.json({
-      message: "App uploaded successfully!",
-      app: data,
-    });
+    res.json({ success: true, app: data });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Admin: Mark app as Promoted
+/* ======================================================
+   ADMIN – PROMOTE / UNPROMOTE APP
+====================================================== */
 router.post("/promote", async (req, res) => {
   try {
     const { appId, promoted } = req.body;
@@ -75,42 +74,76 @@ router.post("/promote", async (req, res) => {
 
     if (error) return res.status(400).json({ error: error.message });
 
-    res.json({
-      message: promoted ? "App promoted!" : "App un-promoted!",
-      data,
-    });
+    res.json({ success: true, data });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Get all apps (developer + users)
+/* ======================================================
+   GET ALL APPS (ADMIN / USER)
+====================================================== */
 router.get("/all", async (req, res) => {
-  try {
-    const { data, error } = await supabase.from("apps").select("*");
-
-    if (error) return res.status(400).json({ error: error.message });
-
-    res.json(data);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  const { data, error } = await supabase.from("apps").select("*");
+  if (error) return res.status(400).json({ error: error.message });
+  res.json(data);
 });
 
-// Get promoted apps
+/* ======================================================
+   GET PROMOTED APPS (HOME PAGE)
+====================================================== */
 router.get("/promoted", async (req, res) => {
-  try {
-    const { data, error } = await supabase
-      .from("apps")
-      .select("*")
-      .eq("promoted", true);
+  const { data, error } = await supabase
+    .from("apps")
+    .select("*")
+    .eq("promoted", true);
 
-    if (error) return res.status(400).json({ error: error.message });
+  if (error) return res.status(400).json({ error: error.message });
+  res.json(data);
+});
 
-    res.json(data);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+/* ======================================================
+   ✅ MISSING ROUTES (NOW ADDED)
+====================================================== */
+
+/* 1️⃣ ADMIN – APPS BY STATUS */
+router.get("/status/:status", async (req, res) => {
+  const { status } = req.params;
+
+  const { data, error } = await supabase
+    .from("apps")
+    .select("*")
+    .eq("status", status);
+
+  if (error) return res.status(400).json({ error: error.message });
+  res.json(data);
+});
+
+/* 2️⃣ DEVELOPER – OWN APPS */
+router.get("/developer/:developerId", async (req, res) => {
+  const { developerId } = req.params;
+
+  const { data, error } = await supabase
+    .from("apps")
+    .select("*")
+    .eq("developer_id", developerId);
+
+  if (error) return res.status(400).json({ error: error.message });
+  res.json(data);
+});
+
+/* 3️⃣ SINGLE APP DETAIL */
+router.get("/:id", async (req, res) => {
+  const { id } = req.params;
+
+  const { data, error } = await supabase
+    .from("apps")
+    .select("*")
+    .eq("id", id)
+    .single();
+
+  if (error) return res.status(400).json({ error: error.message });
+  res.json(data);
 });
 
 export default router;
