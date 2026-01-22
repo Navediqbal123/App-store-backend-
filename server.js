@@ -1,6 +1,5 @@
 /* -----------------------------------
-APP STORE BACKEND - FINAL
-(AUTO VERSION + CLONE CHECK + PROMOTIONS READY)
+APP STORE BACKEND - FINAL (COMPLETE)
 ------------------------------------ */
 
 import express from "express";
@@ -117,7 +116,7 @@ ROOT
 app.get("/", (_, res) => res.send("🔥 Backend Running"));
 
 /* -----------------------------------
-AUTH ROUTES
+AUTH LOGIN
 ------------------------------------ */
 app.post("/auth/login", async (req, res) => {
   const { email, password } = req.body;
@@ -125,6 +124,7 @@ app.post("/auth/login", async (req, res) => {
     "users",
     `?email=eq.${encodeURIComponent(email)}&select=*`
   );
+
   if (!u?.length) return res.status(400).json({ error: "User not found" });
 
   const ok = await bcrypt.compare(password, u[0].password || "");
@@ -136,69 +136,69 @@ app.post("/auth/login", async (req, res) => {
 });
 
 /* -----------------------------------
-PUBLIC APP STORE (❗ FIXED)
+PUBLIC APP STORE
 ------------------------------------ */
 app.get("/apps", async (req, res) => {
-  try {
-    const apps = await sbGet(
-      "apps",
-      "?status=eq.approved&select=*"
-    );
-    res.json(apps);
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+  const apps = await sbGet("apps", "?status=eq.approved&select=*");
+  res.json(apps);
 });
 
 /* -----------------------------------
-DEVELOPER UPLOAD (AUTO VERSION + CLONE CHECK)
+DEVELOPER PROFILE (MISSING – FIXED)
 ------------------------------------ */
-app.post("/developer/apps/upload", auth, async (req, res) => {
-  try {
-    const body = req.body;
-    if (!body.name || !body.package_id)
-      return res.status(400).json({ error: "name & package_id required" });
+app.get("/api/developer/profile", auth, async (req, res) => {
+  const data = await sbGet(
+    "developer_profiles",
+    `?user_id=eq.${req.userId}&select=*`
+  );
+  res.json(data);
+});
 
-    const clone = await sbGet(
-      "apps",
-      `?package_id=eq.${body.package_id}&select=id`
-    );
-    if (clone.length) {
-      return res.status(409).json({
-        clone: true,
-        message: "App with same package already exists",
-      });
-    }
+app.post("/api/developer/profile", auth, async (req, res) => {
+  const payload = {
+    ...req.body,
+    user_id: req.userId,
+    created_at: new Date().toISOString(),
+  };
+  const out = await sbPost("developer_profiles", payload);
+  res.json(out);
+});
 
-    const last = await sbGet(
-      "apps",
-      `?package_id=eq.${body.package_id}&order=version_code.desc&limit=1&select=version_code`
-    );
-    const nextVersionCode =
-      last?.length && last[0].version_code ? last[0].version_code + 1 : 1;
+/* -----------------------------------
+DEVELOPER APPS LIST (MISSING – FIXED)
+------------------------------------ */
+app.get("/api/developer/apps", auth, async (req, res) => {
+  const apps = await sbGet(
+    "apps",
+    `?user_id=eq.${req.userId}&select=*`
+  );
+  res.json(apps);
+});
 
-    const payload = {
-      name: body.name,
-      package_id: body.package_id,
-      description: body.description || null,
-      category: body.category || null,
-      logo_url: body.logo_url || null,
-      apk_url: body.apk_url || null,
-      aab_url: body.aab_url || null,
-      version_code: nextVersionCode,
-      version_name: body.version_name || null,
-      changelog: body.changelog || null,
-      screenshots: body.screenshots || [],
-      user_id: req.userId,
-      status: "pending",
-      created_at: new Date().toISOString(),
-    };
+/* -----------------------------------
+DEVELOPER UPDATE APP (MISSING – FIXED)
+------------------------------------ */
+app.post("/api/developer/apps/update/:id", auth, async (req, res) => {
+  const id = req.params.id;
 
-    const out = await sbPost("apps", payload);
-    res.json({ success: true, data: out });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+  const out = await sbPatch("apps", `?id=eq.${id}`, {
+    ...req.body,
+    status: "pending",
+    updated_at: new Date().toISOString(),
+  });
+
+  res.json({ success: true, data: out });
+});
+
+/* -----------------------------------
+ADMIN – ALL APPS LIST (MISSING – FIXED)
+------------------------------------ */
+app.get("/admin/apps", auth, async (req, res) => {
+  if (!(await isAdmin(req.userId)))
+    return res.status(403).json({ error: "Admin only" });
+
+  const apps = await sbGet("apps", "?select=*");
+  res.json(apps);
 });
 
 /* -----------------------------------
