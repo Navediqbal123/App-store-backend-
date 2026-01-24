@@ -1,72 +1,39 @@
 import express from "express";
-import fetch from "node-fetch";
+import { supabase } from "../supabaseClient.js"; // SDK Use karein
 
 const router = express.Router();
-
-/*
-POST /api/clone-check
-Body:
-{
-  "package_id": "com.my.app",
-  "name": "My App"
-}
-*/
 
 router.post("/clone-check", async (req, res) => {
   try {
     const { package_id, name } = req.body;
+    if (!package_id && !name) return res.status(400).json({ error: "Required fields missing" });
 
-    if (!package_id && !name) {
-      return res.status(400).json({ error: "package_id or name required" });
+    // 1. Package ID Check (Exact match)
+    const { data: pkgData } = await supabase
+      .from("apps")
+      .select("id")
+      .eq("package_id", package_id);
+
+    if (pkgData?.length > 0) {
+      return res.json({ clone: true, reason: "Package ID already exists" });
     }
 
-    const SUPABASE_URL = process.env.SUPABASE_URL;
-    const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    // 2. Name Check (Fuzzy match)
+    const { data: nameData } = await supabase
+      .from("apps")
+      .select("id")
+      .ilike("name", `%${name}%`);
 
-    // 🔍 package_id match (strong clone)
-    const pkgRes = await fetch(
-      `${SUPABASE_URL}/rest/v1/apps?package_id=eq.${package_id}&select=id`,
-      {
-        headers: {
-          apikey: KEY,
-          Authorization: `Bearer ${KEY}`,
-        },
-      }
-    );
-
-    const pkgData = await pkgRes.json();
-
-    if (pkgData.length > 0) {
-      return res.json({
-        clone: true,
-        reason: "Package ID already exists",
-      });
+    if (nameData?.length > 0) {
+      return res.json({ clone: true, reason: "Similar app name exists" });
     }
 
-    // 🔍 name match (soft clone)
-    const nameRes = await fetch(
-      `${SUPABASE_URL}/rest/v1/apps?name=ilike.%${name}%&select=id`,
-      {
-        headers: {
-          apikey: KEY,
-          Authorization: `Bearer ${KEY}`,
-        },
-      }
-    );
+    // 3. Success Log
+    await supabase.from("admin_ai_insights").insert([
+      { type: "clone_check", result: "clean", created_at: new Date().toISOString() }
+    ]);
 
-    const nameData = await nameRes.json();
-
-    if (nameData.length > 0) {
-      return res.json({
-        clone: true,
-        reason: "Similar app name exists",
-      });
-    }
-
-    res.json({
-      clone: false,
-      reason: "No duplicate found",
-    });
+    res.json({ clone: false, reason: "No duplicate found" });
 
   } catch (err) {
     res.status(500).json({ error: "Clone check failed" });
