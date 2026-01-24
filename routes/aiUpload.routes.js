@@ -1,106 +1,47 @@
 import express from "express";
+import { supabase } from "../supabaseClient.js"; // SDK use karein
 import fetch from "node-fetch";
 
 const router = express.Router();
 
-/*
-POST /api/ai-upload
-Body:
-{
-  "appName": "My App",
-  "category": "Tools",
-  "permissions": "Camera, Storage"
-}
-*/
-
 router.post("/ai-upload", async (req, res) => {
-  const SUPABASE_URL = process.env.SUPABASE_URL;
-  const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
   try {
     const { appName, category, permissions } = req.body;
+    if (!appName) return res.status(400).json({ error: "appName required" });
 
-    if (!appName) {
-      return res.status(400).json({ error: "appName required" });
-    }
-
-    const response = await fetch(
-      "https://openrouter.ai/api/v1/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: "openai/gpt-4o-mini",
-          messages: [
-            {
-              role: "system",
-              content: "You are an App Store AI assistant.",
-            },
-            {
-              role: "user",
-              content: `
-Generate:
-- App description
-- 5 tags
-- Short privacy summary
-
-App name: ${appName}
-Category: ${category || "General"}
-Permissions: ${permissions || "None"}
-              `,
-            },
-          ],
-        }),
-      }
-    );
-
-    const data = await response.json();
-
-    if (!data.choices) {
-      throw new Error("AI response failed");
-    }
-
-    /* 🔹 AUTO LOG : AI SUCCESS */
-    await fetch(`${SUPABASE_URL}/rest/v1/admin_ai_insights`, {
+    // 1. Call AI with Structured Prompt
+    const aiResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
-        apikey: KEY,
-        Authorization: `Bearer ${KEY}`,
         "Content-Type": "application/json",
-        Prefer: "return=representation",
+        Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
       },
       body: JSON.stringify({
-        type: "ai_upload",
-        result: "success",
+        model: "openai/gpt-4o-mini",
+        messages: [
+          { role: "system", content: "Return ONLY a JSON object with keys: description, tags (array), privacy_summary." },
+          { role: "user", content: `App: ${appName}, Category: ${category}, Permissions: ${permissions}` }
+        ],
+        response_format: { type: "json_object" } // AI hamesha JSON hi dega
       }),
     });
 
-    res.json({
-      aiGenerated: true,
-      content: data.choices[0].message.content,
-    });
+    const aiData = await aiResponse.json();
+    const content = JSON.parse(aiData.choices[0].message.content);
+
+    // 2. Logging with Supabase SDK
+    await supabase.from("admin_ai_insights").insert([
+      { type: "ai_upload", result: "success" }
+    ]);
+
+    res.json({ success: true, ...content });
 
   } catch (err) {
-
-    /* 🔹 AUTO LOG : AI ERROR */
-    await fetch(`${SUPABASE_URL}/rest/v1/admin_ai_insights`, {
-      method: "POST",
-      headers: {
-        apikey: KEY,
-        Authorization: `Bearer ${KEY}`,
-        "Content-Type": "application/json",
-        Prefer: "return=representation",
-      },
-      body: JSON.stringify({
-        type: "ai_upload",
-        result: "error",
-      }),
-    });
-
-    res.status(500).json({ error: "AI upload failed" });
+    // 3. Error Logging
+    await supabase.from("admin_ai_insights").insert([
+      { type: "ai_upload", result: "error" }
+    ]);
+    res.status(500).json({ error: "AI failed to generate content" });
   }
 });
 
