@@ -1,71 +1,50 @@
 import express from "express";
-import axios from "axios";
+import { supabase } from "../supabaseClient.js"; // SDK use karein
 import fetch from "node-fetch";
 
 const router = express.Router();
 
 router.post("/virus-scan", async (req, res) => {
-  const SUPABASE_URL = process.env.SUPABASE_URL;
-  const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
   try {
     const { fileUrl } = req.body;
+    if (!fileUrl) return res.status(400).json({ error: "File URL required" });
 
-    if (!fileUrl) {
-      return res.status(400).json({ error: "File URL required" });
-    }
-
-    const response = await axios.post(
-      "https://www.virustotal.com/api/v3/urls",
-      new URLSearchParams({ url: fileUrl }),
-      {
-        headers: {
-          "x-apikey": process.env.VIRUSTOTAL_API_KEY,
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-      }
-    );
-
-    const analysisId = response.data.data.id;
-
-    /* 🔹 AUTO LOG : VIRUS PASSED */
-    await fetch(`${SUPABASE_URL}/rest/v1/admin_ai_insights`, {
+    // 1. VirusTotal URL Scan Call
+    const vtResponse = await fetch("https://www.virustotal.com/api/v3/urls", {
       method: "POST",
       headers: {
-        apikey: KEY,
-        Authorization: `Bearer ${KEY}`,
-        "Content-Type": "application/json",
-        Prefer: "return=representation",
+        "x-apikey": process.env.VIRUSTOTAL_API_KEY,
+        "Content-Type": "application/x-www-form-urlencoded",
       },
-      body: JSON.stringify({
-        type: "virus_scan",
-        result: "passed",
-      }),
+      body: new URLSearchParams({ url: fileUrl }),
     });
 
-    return res.json({
+    const vtData = await vtResponse.json();
+    if (!vtData.data) throw new Error("VirusTotal connection failed");
+
+    // 2. Logging Success with SDK
+    await supabase.from("admin_ai_insights").insert([
+      { 
+        type: "virus_scan", 
+        result: "passed", // Backend confirm kar raha hai ki request submit ho gayi
+        created_at: new Date().toISOString() 
+      }
+    ]);
+
+    res.json({
+      success: true,
       scanned: true,
-      analysisId,
+      analysisId: vtData.data.id,
+      message: "Scan initiated successfully"
     });
 
   } catch (err) {
-
-    /* 🔹 AUTO LOG : VIRUS FAILED */
-    await fetch(`${SUPABASE_URL}/rest/v1/admin_ai_insights`, {
-      method: "POST",
-      headers: {
-        apikey: KEY,
-        Authorization: `Bearer ${KEY}`,
-        "Content-Type": "application/json",
-        Prefer: "return=representation",
-      },
-      body: JSON.stringify({
-        type: "virus_scan",
-        result: "failed",
-      }),
-    });
-
-    res.status(500).json({ error: "Virus scan failed" });
+    // 3. Error Logging
+    await supabase.from("admin_ai_insights").insert([
+      { type: "virus_scan", result: "failed" }
+    ]);
+    
+    res.status(500).json({ error: "Security scan could not be completed" });
   }
 });
 
