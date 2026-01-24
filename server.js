@@ -1,12 +1,13 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import { supabase } from "./supabaseClient.js"; // SDK use karein, fetch nahi
+import { supabase } from "./supabaseClient.js"; 
 
 /* 🔹 ROUTES IMPORT */
 import appsRoutes from "./routes/apps.js";
 import adminStatsRoutes from "./routes/adminStats.routes.js";
 import adminInsightsRoutes from "./routes/adminInsights.routes.js";
+import developerRoutes from "./routes/developer.routes.js"; // ✅ Naya Import Added
 // ... baki imports (virusScan, aiUpload, etc.) waise hi rakhein
 
 dotenv.config();
@@ -16,10 +17,10 @@ app.use(cors());
 app.use(express.json({ limit: "10mb" }));
 
 /* 🔹 MOUNT ROUTES (Clean Architecture) */
-// Jo routes humne fix kiye hain, unhe sahi path par lagayein
-app.use("/api/apps", appsRoutes);              // Saari apps aur upload logic yahan hai
-app.use("/api/admin/stats", adminStatsRoutes);   // /api/admin/stats/summary
-app.use("/api/admin/insights", adminInsightsRoutes); // /api/admin/insights/update
+app.use("/api/apps", appsRoutes);              
+app.use("/api/admin/stats", adminStatsRoutes);   
+app.use("/api/admin/insights", adminInsightsRoutes); 
+app.use("/api/developers", developerRoutes); // ✅ Naya Route Mount Added
 
 /* -----------------------------------
    AUTH LOGIN (Inline)
@@ -27,7 +28,6 @@ app.use("/api/admin/insights", adminInsightsRoutes); // /api/admin/insights/upda
 app.post("/api/auth/login", async (req, res) => {
   const { email, password } = req.body;
   
-  // Seedha Supabase Auth ya Users table check karein
   const { data: u, error } = await supabase
     .from("users")
     .select("*")
@@ -36,7 +36,6 @@ app.post("/api/auth/login", async (req, res) => {
 
   if (error || !u) return res.status(400).json({ error: "User not found" });
 
-  // Note: Password bcrypt check yahan rahega
   res.json({ user: u }); 
 });
 
