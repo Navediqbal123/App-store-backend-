@@ -1,14 +1,19 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import jwt from "jsonwebtoken";
+import bcrypt from "bcryptjs";
 import { supabase } from "./supabaseClient.js"; 
 
 /* 🔹 ROUTES IMPORT */
 import appsRoutes from "./routes/apps.js";
 import adminStatsRoutes from "./routes/adminStats.routes.js";
 import adminInsightsRoutes from "./routes/adminInsights.routes.js";
-import developerRoutes from "./routes/developer.routes.js"; // ✅ Naya Import Added
-// ... baki imports (virusScan, aiUpload, etc.) waise hi rakhein
+import developerRoutes from "./routes/developer.routes.js";
+import virusScanRoutes from "./routes/virusScan.routes.js";
+import aiUploadRoutes from "./routes/aiUpload.routes.js";
+import chatbotRoutes from "./routes/chatbot.routes.js";
+import cloneCheckRoutes from "./routes/cloneCheck.routes.js";
 
 dotenv.config();
 const app = express();
@@ -16,27 +21,51 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: "10mb" }));
 
-/* 🔹 MOUNT ROUTES (Clean Architecture) */
+/* 🔹 MOUNT ROUTES */
 app.use("/api/apps", appsRoutes);              
 app.use("/api/admin/stats", adminStatsRoutes);   
 app.use("/api/admin/insights", adminInsightsRoutes); 
-app.use("/api/developers", developerRoutes); // ✅ Naya Route Mount Added
+app.use("/api/developers", developerRoutes);
+app.use("/api/virus-scan", virusScanRoutes);
+app.use("/api/ai-upload", aiUploadRoutes);
+app.use("/api/chatbot", chatbotRoutes);
+app.use("/api/clone-check", cloneCheckRoutes);
 
 /* -----------------------------------
-   AUTH LOGIN (Inline)
+   AUTH LOGIN (Fixed with Token)
 ------------------------------------ */
 app.post("/api/auth/login", async (req, res) => {
-  const { email, password } = req.body;
-  
-  const { data: u, error } = await supabase
-    .from("users")
-    .select("*")
-    .eq("email", email)
-    .single();
+  try {
+    const { email, password } = req.body;
+    
+    // 1. Database se user fetch
+    const { data: u, error } = await supabase
+      .from("users")
+      .select("*")
+      .eq("email", email)
+      .single();
 
-  if (error || !u) return res.status(400).json({ error: "User not found" });
+    if (error || !u) return res.status(400).json({ error: "User not found" });
 
-  res.json({ user: u }); 
+    // 2. Password check (Bcrypt)
+    const isMatch = await bcrypt.compare(password, u.password);
+    if (!isMatch) return res.status(400).json({ error: "Invalid credentials" });
+
+    // 3. Token generate
+    const token = jwt.sign(
+      { id: u.id, email: u.email, role: u.role }, 
+      process.env.JWT_SECRET, 
+      { expiresIn: "7d" }
+    );
+
+    // 4. Security cleanup
+    delete u.password;
+
+    res.json({ success: true, token, user: u });
+
+  } catch (err) {
+    res.status(500).json({ error: "Login error", details: err.message });
+  }
 });
 
 /* -----------------------------------
