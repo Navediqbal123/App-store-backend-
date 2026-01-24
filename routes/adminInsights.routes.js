@@ -1,22 +1,12 @@
 import express from "express";
-import fetch from "node-fetch";
+import { supabase } from "../supabaseClient.js";
 import jwt from "jsonwebtoken";
 
 const router = express.Router();
-
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const JWT_SECRET = process.env.JWT_SECRET;
 
-const headers = {
-  apikey: KEY,
-  Authorization: `Bearer ${KEY}`,
-  "Content-Type": "application/json",
-  Prefer: "return=representation",
-};
-
 /* ===============================
-AUTH
+   AUTH MIDDLEWARE
 =============================== */
 function auth(req, res, next) {
   const token = req.headers.authorization?.split(" ")[1];
@@ -25,81 +15,65 @@ function auth(req, res, next) {
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
     req.userId = decoded.id;
+    req.email = decoded.email; // Email extract karna zaroori hai
     next();
   } catch {
     return res.status(401).json({ error: "Invalid token" });
   }
 }
 
-/* ===============================
-ADMIN CHECK
-=============================== */
-async function isAdmin(userId) {
-  const r = await fetch(
-    `${SUPABASE_URL}/rest/v1/users?id=eq.${userId}&select=role`,
-    {
-      headers: {
-        apikey: KEY,
-        Authorization: `Bearer ${KEY}`,
-      },
-    }
-  );
-  const d = await r.json();
-  return d?.[0]?.role === "admin";
-}
-
 /* =====================================================
-ADMIN – UPDATE INSIGHTS
-POST /api/admin/insights/update
-(Admin only)
+   ADMIN – UPDATE INSIGHTS (POST)
 ===================================================== */
-router.post("/insights/update", auth, async (req, res) => {
+router.post("/update", auth, async (req, res) => {
   try {
-    if (!(await isAdmin(req.userId))) {
+    // 🔒 Admin Email Security Check
+    if (req.email !== "navedahmad9012@gmail.com") {
       return res.status(403).json({ error: "Admin only" });
     }
 
-    const payload = {
-      total_apps: req.body.total_apps ?? 0,
-      total_scans: req.body.total_scans ?? 0,
-      scan_pass: req.body.scan_pass ?? 0,
-      scan_fail: req.body.scan_fail ?? 0,
-      created_at: new Date().toISOString(),
-    };
+    const { total_apps, total_scans, scan_pass, scan_fail } = req.body;
 
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/admin_ai_insights`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(payload),
-    });
+    const { data, error } = await supabase
+      .from("admin_ai_insights")
+      .insert([
+        {
+          total_apps: total_apps ?? 0,
+          total_scans: total_scans ?? 0,
+          scan_pass: scan_pass ?? 0,
+          scan_fail: scan_fail ?? 0,
+          created_at: new Date().toISOString(),
+        }
+      ])
+      .select();
 
-    const data = await r.json();
-    res.json({ success: true, data });
-  } catch {
-    res.status(500).json({ error: "Failed to update insights" });
+    if (error) throw error;
+    res.json({ success: true, data: data[0] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
 /* =====================================================
-ADMIN – GET LATEST INSIGHTS
-GET /api/admin/insights
-(Admin only)
+   ADMIN – GET LATEST INSIGHTS (GET)
 ===================================================== */
-router.get("/insights", auth, async (req, res) => {
+router.get("/", auth, async (req, res) => {
   try {
-    if (!(await isAdmin(req.userId))) {
+    if (req.email !== "navedahmad9012@gmail.com") {
       return res.status(403).json({ error: "Admin only" });
     }
 
-    const r = await fetch(
-      `${SUPABASE_URL}/rest/v1/admin_ai_insights?order=created_at.desc&limit=1`,
-      { headers }
-    );
+    const { data, error } = await supabase
+      .from("admin_ai_insights")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
 
-    const data = await r.json();
-    res.json({ success: true, data: data?.[0] || {} });
-  } catch {
-    res.status(500).json({ error: "Failed to fetch insights" });
+    if (error && error.code !== 'PGRST116') throw error; // Handle empty table
+    res.json({ success: true, data: data || {} });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
