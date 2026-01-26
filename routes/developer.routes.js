@@ -1,55 +1,46 @@
 import express from "express";
-import multer from "multer"; // Added Multer for File Upload
+import multer from "multer";
 import { supabase } from "../supabaseClient.js";
+import { verifyToken } from "../middleware/auth.js"; // 👈 Middleware Import kiya
 
 const router = express.Router();
-
-// Multer Setup (Memory Storage)
 const upload = multer({ storage: multer.memoryStorage() });
 
 /* ======================================================
-   1. GET ALL DEVELOPERS (Admin Only)
+   1. GET ALL DEVELOPERS (Admin Only) - Protected
    ====================================================== */
-router.get("/all", async (req, res) => {
+router.get("/all", verifyToken, async (req, res) => { // 👈 verifyToken add kiya
   const { data, error } = await supabase.from("developers").select("*");
   if (error) return res.status(400).json({ error: error.message });
   res.json(data);
 });
 
 /* ======================================================
-   2. DEVELOPER REGISTRATION (With ID Upload)
+   2. DEVELOPER REGISTRATION - Protected
    ====================================================== */
-router.post("/register", upload.single("id_file"), async (req, res) => {
+router.post("/register", verifyToken, upload.single("id_file"), async (req, res) => { // 👈 verifyToken add kiya
   try {
     const { user_id, developer_name, bio, website } = req.body;
     const file = req.file;
 
-    if (!file) {
-      return res.status(400).json({ error: "ID Document is required" });
-    }
+    if (!file) return res.status(400).json({ error: "ID Document is required" });
 
-    // 1. Storage mein upload
     const fileName = `ids/${Date.now()}-${file.originalname}`;
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from("developer-ids")
-      .upload(fileName, file.buffer, {
-        contentType: file.mimetype,
-      });
+      .upload(fileName, file.buffer, { contentType: file.mimetype });
 
     if (uploadError) throw uploadError;
 
-    // 2. DB mein URL aur Metadata save
-    const { data: urlData } = supabase.storage
-      .from("developer-ids")
-      .getPublicUrl(fileName);
+    const { data: urlData } = supabase.storage.from("developer-ids").getPublicUrl(fileName);
 
     const { data, error } = await supabase.from("developers").insert([
       { 
         user_id, 
-        developer_name, // Table column match
+        developer_name, 
         bio, 
         website, 
-        id_document_url: urlData.publicUrl, // URL column
+        id_document_url: urlData.publicUrl, 
         status: "pending" 
       }
     ]).select();
@@ -63,9 +54,9 @@ router.post("/register", upload.single("id_file"), async (req, res) => {
 });
 
 /* ======================================================
-   3. ADMIN - APPROVE/REJECT DEVELOPER
+   3. ADMIN - APPROVE/REJECT DEVELOPER - Protected
    ====================================================== */
-router.post("/update-status", async (req, res) => {
+router.post("/update-status", verifyToken, async (req, res) => { // 👈 verifyToken add kiya
   const { devId, status } = req.body;
   const { data, error } = await supabase
     .from("developers")
