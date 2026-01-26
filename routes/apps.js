@@ -11,31 +11,31 @@ const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
 /* ======================================================
-   CREATE NEW APP (UPLOAD APK / AAB)
-====================================================== */
-router.post("/upload", upload.single("file"), async (req, res) => {
+   1. CREATE NEW APP (UPLOAD APK / AAB)
+   ====================================================== */
+// User ke snippet ke mutabiq 'app_file' field use kiya hai
+router.post("/upload", upload.single("app_file"), async (req, res) => {
   try {
-    const {
-      name,
-      description,
-      category_id,
-      developer_id,
-      size,
+    const { 
+      developer_id, 
+      name, 
+      description, 
+      category, 
       version,
-      icon_url
+      size, // Additional fields from first snippet kept for completeness
+      icon_url 
     } = req.body;
-
+    
     const file = req.file;
 
     if (!file) {
       return res.status(400).json({ error: "APK or AAB file is required" });
     }
 
-    const fileName = `uploads/${Date.now()}_${file.originalname}`;
-
-    // Upload to Supabase Storage
-    const { error: uploadError } = await supabase.storage
-      .from("app-store-files")
+    // 1. Storage mein upload (Bucket: 'apps')
+    const fileName = `apps/${Date.now()}-${file.originalname}`;
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from("apps")
       .upload(fileName, file.buffer, {
         contentType: file.mimetype,
         upsert: true
@@ -45,28 +45,27 @@ router.post("/upload", upload.single("file"), async (req, res) => {
       return res.status(500).json({ error: uploadError.message });
     }
 
-    const apkUrl = supabase.storage
-      .from("app-store-files")
-      .getPublicUrl(fileName).data.publicUrl;
+    // 2. DB mein file_url aur metadata save
+    const { data: urlData } = supabase.storage
+      .from("apps")
+      .getPublicUrl(fileName);
 
-    // Insert App Record
     const { data, error } = await supabase
       .from("apps")
       .insert([
         {
+          developer_id,
           name,
           description,
-          category_id: parseInt(category_id),
-          developer_id,
-          icon_url,
-          apk_url: apkUrl,
-          size,
+          category, // Matches your provided snippet
           version,
+          file_url: urlData.publicUrl, // Matches your new SQL schema
+          size: size || "0 MB",
+          icon_url: icon_url || "",
           status: "pending",
           trending: false,
           downloads: 0,
           rating: 5.0,
-          review_count: 0,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         }
@@ -77,14 +76,14 @@ router.post("/upload", upload.single("file"), async (req, res) => {
       return res.status(500).json({ error: error.message });
     }
 
-    res.json({ success: true, app: data[0] });
+    res.json({ success: true, data: data[0] });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
 /* ======================================================
-   ADMIN – APPROVE / REJECT / TRENDING
+   2. ADMIN – APPROVE / REJECT / TRENDING
 ====================================================== */
 router.post("/update-status", async (req, res) => {
   try {
@@ -111,7 +110,7 @@ router.post("/update-status", async (req, res) => {
 });
 
 /* ======================================================
-   GET ALL APPS (ADMIN / STORE)
+   3. GET ALL APPS (ADMIN / STORE)
 ====================================================== */
 router.get("/all", async (req, res) => {
   const { data, error } = await supabase.from("apps").select("*");
@@ -120,12 +119,12 @@ router.get("/all", async (req, res) => {
 });
 
 /* ======================================================
-   GET APPROVED APPS (STORE)
+   4. GET APPROVED APPS (STORE)
 ====================================================== */
 router.get("/store/all", async (req, res) => {
   const { data, error } = await supabase
     .from("apps")
-    .select("*, categories(name)")
+    .select("*")
     .eq("status", "approved");
 
   if (error) return res.status(400).json({ error: error.message });
@@ -133,7 +132,7 @@ router.get("/store/all", async (req, res) => {
 });
 
 /* ======================================================
-   GET TRENDING / PROMOTED APPS
+   5. GET TRENDING / PROMOTED APPS
 ====================================================== */
 router.get("/trending", async (req, res) => {
   const { data, error } = await supabase
@@ -146,25 +145,12 @@ router.get("/trending", async (req, res) => {
 });
 
 /* ======================================================
-   ADMIN – APPS BY STATUS
-====================================================== */
-router.get("/status/:status", async (req, res) => {
-  const { data, error } = await supabase
-    .from("apps")
-    .select("*")
-    .eq("status", req.params.status);
-
-  if (error) return res.status(400).json({ error: error.message });
-  res.json(data);
-});
-
-/* ======================================================
-   SINGLE APP DETAIL
+   6. SINGLE APP DETAIL
 ====================================================== */
 router.get("/:id", async (req, res) => {
   const { data, error } = await supabase
     .from("apps")
-    .select("*, categories(name)")
+    .select("*")
     .eq("id", req.params.id)
     .single();
 
@@ -173,7 +159,7 @@ router.get("/:id", async (req, res) => {
 });
 
 /* ======================================================
-   DEVELOPER – MY APPS
+   7. DEVELOPER – MY APPS
 ====================================================== */
 router.get("/developer/:devId", async (req, res) => {
   const { data, error } = await supabase
@@ -186,3 +172,4 @@ router.get("/developer/:devId", async (req, res) => {
 });
 
 export default router;
+     
