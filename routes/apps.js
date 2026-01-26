@@ -1,6 +1,7 @@
 import express from "express";
 import multer from "multer";
 import { supabase } from "../supabaseClient.js";
+import { verifyToken } from "../middleware/auth.js"; // 👈 Middleware Import kiya
 
 const router = express.Router();
 
@@ -11,10 +12,9 @@ const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
 /* ======================================================
-   1. CREATE NEW APP (UPLOAD APK / AAB)
+   1. CREATE NEW APP (UPLOAD APK / AAB) - Protected
    ====================================================== */
-// User ke snippet ke mutabiq 'app_file' field use kiya hai
-router.post("/upload", upload.single("app_file"), async (req, res) => {
+router.post("/upload", verifyToken, upload.single("app_file"), async (req, res) => { // 👈 verifyToken added
   try {
     const { 
       developer_id, 
@@ -22,7 +22,7 @@ router.post("/upload", upload.single("app_file"), async (req, res) => {
       description, 
       category, 
       version,
-      size, // Additional fields from first snippet kept for completeness
+      size,
       icon_url 
     } = req.body;
     
@@ -32,7 +32,6 @@ router.post("/upload", upload.single("app_file"), async (req, res) => {
       return res.status(400).json({ error: "APK or AAB file is required" });
     }
 
-    // 1. Storage mein upload (Bucket: 'apps')
     const fileName = `apps/${Date.now()}-${file.originalname}`;
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from("apps")
@@ -45,7 +44,6 @@ router.post("/upload", upload.single("app_file"), async (req, res) => {
       return res.status(500).json({ error: uploadError.message });
     }
 
-    // 2. DB mein file_url aur metadata save
     const { data: urlData } = supabase.storage
       .from("apps")
       .getPublicUrl(fileName);
@@ -57,9 +55,9 @@ router.post("/upload", upload.single("app_file"), async (req, res) => {
           developer_id,
           name,
           description,
-          category, // Matches your provided snippet
+          category,
           version,
-          file_url: urlData.publicUrl, // Matches your new SQL schema
+          file_url: urlData.publicUrl,
           size: size || "0 MB",
           icon_url: icon_url || "",
           status: "pending",
@@ -83,9 +81,9 @@ router.post("/upload", upload.single("app_file"), async (req, res) => {
 });
 
 /* ======================================================
-   2. ADMIN – APPROVE / REJECT / TRENDING
-====================================================== */
-router.post("/update-status", async (req, res) => {
+   2. ADMIN – APPROVE / REJECT / TRENDING - Protected
+   ====================================================== */
+router.post("/update-status", verifyToken, async (req, res) => { // 👈 verifyToken added
   try {
     const { appId, status, trending } = req.body;
 
@@ -110,17 +108,17 @@ router.post("/update-status", async (req, res) => {
 });
 
 /* ======================================================
-   3. GET ALL APPS (ADMIN / STORE)
-====================================================== */
-router.get("/all", async (req, res) => {
+   3. GET ALL APPS (ADMIN / STORE) - Protected
+   ====================================================== */
+router.get("/all", verifyToken, async (req, res) => { // 👈 verifyToken added
   const { data, error } = await supabase.from("apps").select("*");
   if (error) return res.status(400).json({ error: error.message });
   res.json(data);
 });
 
 /* ======================================================
-   4. GET APPROVED APPS (STORE)
-====================================================== */
+   4. GET APPROVED APPS (STORE) - Public
+   ====================================================== */
 router.get("/store/all", async (req, res) => {
   const { data, error } = await supabase
     .from("apps")
@@ -132,8 +130,8 @@ router.get("/store/all", async (req, res) => {
 });
 
 /* ======================================================
-   5. GET TRENDING / PROMOTED APPS
-====================================================== */
+   5. GET TRENDING / PROMOTED APPS - Public
+   ====================================================== */
 router.get("/trending", async (req, res) => {
   const { data, error } = await supabase
     .from("apps")
@@ -145,8 +143,8 @@ router.get("/trending", async (req, res) => {
 });
 
 /* ======================================================
-   6. SINGLE APP DETAIL
-====================================================== */
+   6. SINGLE APP DETAIL - Public
+   ====================================================== */
 router.get("/:id", async (req, res) => {
   const { data, error } = await supabase
     .from("apps")
@@ -159,9 +157,9 @@ router.get("/:id", async (req, res) => {
 });
 
 /* ======================================================
-   7. DEVELOPER – MY APPS
-====================================================== */
-router.get("/developer/:devId", async (req, res) => {
+   7. DEVELOPER – MY APPS - Protected
+   ====================================================== */
+router.get("/developer/:devId", verifyToken, async (req, res) => { // 👈 verifyToken added
   const { data, error } = await supabase
     .from("apps")
     .select("*")
@@ -172,4 +170,3 @@ router.get("/developer/:devId", async (req, res) => {
 });
 
 export default router;
-     
