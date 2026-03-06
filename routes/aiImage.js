@@ -25,12 +25,12 @@ router.post("/generate", async (req, res) => {
             { type: 'screen2', prompt: `Mobile app screenshot for '${name}': Feature showcase, clean design.` }
         ];
 
-        // FIX: Model name and parameters updated for OpenRouter stability
         const generatedData = await Promise.all(imageConfigs.map(async (config) => {
+            // FIX: Using a more stable OpenRouter model and checking both possible response paths
             const aiRes = await axios.post("https://openrouter.ai/api/v1/images/generations", {
-                model: "openai/dall-e-3", 
+                model: "black-forest-labs/flux-1-schnell", // Much more stable on OpenRouter
                 prompt: config.prompt,
-                size: "1024x1024" // Added size parameter
+                size: "1024x1024" 
             }, { 
                 headers: { 
                     "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
@@ -40,9 +40,9 @@ router.post("/generate", async (req, res) => {
                 } 
             });
             
-            // Check for OpenRouter specific data structure
+            // Fix for different API response structures
             const imageUrl = aiRes.data.data?.[0]?.url || aiRes.data?.[0]?.url;
-            if (!imageUrl) throw new Error("AI Generation returned no URL");
+            if (!imageUrl) throw new Error(`AI returned: ${JSON.stringify(aiRes.data)}`);
             
             return { type: config.type, url: imageUrl };
         }));
