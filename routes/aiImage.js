@@ -27,21 +27,32 @@ router.post("/generate", async (req, res) => {
             { type: 'screen2', prompt: `Mobile app screenshot for '${name}': Feature showcase, clean design.` }
         ];
 
-        // 2. Generate Images via OpenRouter
+        // 2. Generate Images via OpenRouter (Updated Endpoint & Model)
         const generatedData = await Promise.all(imageConfigs.map(async (config) => {
+            // OpenRouter ke liye "openai/dall-e-3" ya "google/imagen-3" best hain
             const aiRes = await axios.post("https://openrouter.ai/api/v1/images/generations", {
-                model: "openai/dall-e-3", // OpenRouter model
+                model: "openai/dall-e-3", 
                 prompt: config.prompt,
                 response_format: "url"
-            }, { headers: { Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}` } });
+            }, { 
+                headers: { 
+                    "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": "https://lovable.dev", // OpenRouter requires this
+                    "X-Title": "App Store AI"
+                } 
+            });
             
+            if (!aiRes.data.data || !aiRes.data.data[0]) throw new Error("AI Generation returned no data");
             return { type: config.type, url: aiRes.data.data[0].url };
         }));
 
         // 3. Upload to Supabase to make them Permanent
         const timestamp = Date.now();
+        const folderName = name.replace(/\s+/g, '_').toLowerCase();
+        
         const finalUrls = await Promise.all(generatedData.map(img => 
-            uploadToSupabase(img.url, `${name.replace(/\s+/g, '_')}/${img.type}_${timestamp}.png`)
+            uploadToSupabase(img.url, `${folderName}/${img.type}_${timestamp}.png`)
         ));
 
         // 4. Send Clean Response
@@ -53,10 +64,14 @@ router.post("/generate", async (req, res) => {
         });
 
     } catch (error) {
-        console.error("Backend Error:", error.message);
-        res.status(500).json({ success: false, error: "Generation or Storage failed", details: error.message });
+        // Detailed error logging for Render
+        console.error("Backend Error Detail:", error.response?.data || error.message);
+        res.status(500).json({ 
+            success: false, 
+            error: "Generation or Storage failed", 
+            details: error.response?.data?.error?.message || error.message 
+        });
     }
 });
 
 export default router;
-
