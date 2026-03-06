@@ -1,58 +1,35 @@
 import express from "express";
-import axios from "axios";
 import { supabase } from "../supabaseClient.js";
 
 const router = express.Router();
-
-async function uploadToSupabase(url, fileName) {
-    const response = await axios.get(url, { responseType: 'arraybuffer' });
-    const { data, error } = await supabase.storage
-        .from('apps')
-        .upload(fileName, response.data, { contentType: 'image/png', upsert: true });
-    
-    if (error) throw error;
-    return supabase.storage.from('apps').getPublicUrl(fileName).data.publicUrl;
-}
 
 router.post("/generate", async (req, res) => {
     try {
         const { name, description } = req.body;
         if (!name || !description) return res.status(400).json({ error: "Name and Description are required" });
 
-        const imageConfigs = [
-            { type: 'icon', prompt: `Professional 512x512 app icon for '${name}': ${description}. High-quality, flat vector style.` },
-            { type: 'screen1', prompt: `Mobile app screenshot for '${name}': Main interface, high resolution, professional UI.` },
-            { type: 'screen2', prompt: `Mobile app screenshot for '${name}': Feature showcase, clean design.` }
-        ];
+        const encodedIcon = encodeURIComponent(`Professional app icon for '${name}': ${description}. Flat vector style.`);
+        const encodedScreen1 = encodeURIComponent(`Mobile app screenshot for '${name}': Main interface, professional UI.`);
+        const encodedScreen2 = encodeURIComponent(`Mobile app screenshot for '${name}': Feature showcase, clean design.`);
 
-        const generatedData = await Promise.all(imageConfigs.map(async (config) => {
-            // ✅ Pollinations AI - Free, no API key needed
-            const encodedPrompt = encodeURIComponent(config.prompt);
-            const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=1024&nologo=true`;
-            
-            return { type: config.type, url: imageUrl };
-        }));
-
-        const timestamp = Date.now();
-        const folderName = name.replace(/\s+/g, '_').toLowerCase();
-        
-        const finalUrls = await Promise.all(generatedData.map(img => 
-            uploadToSupabase(img.url, `${folderName}/${img.type}_${timestamp}.png`)
-        ));
+        // ✅ Seedha Pollinations URL return karo - download/upload nahi
+        const icon_url = `https://image.pollinations.ai/prompt/${encodedIcon}?width=512&height=512&nologo=true`;
+        const screen1_url = `https://image.pollinations.ai/prompt/${encodedScreen1}?width=1024&height=1024&nologo=true`;
+        const screen2_url = `https://image.pollinations.ai/prompt/${encodedScreen2}?width=1024&height=1024&nologo=true`;
 
         res.json({
             success: true,
-            icon_url: finalUrls[0],
-            screenshot_urls: [finalUrls[1], finalUrls[2]],
-            message: "All images generated and saved permanently!"
+            icon_url,
+            screenshot_urls: [screen1_url, screen2_url],
+            message: "Images generated successfully!"
         });
 
     } catch (error) {
-        console.error("Backend Error Detail:", error.response?.data || error.message);
+        console.error("Backend Error:", error.message);
         res.status(500).json({ 
             success: false, 
-            error: "Generation or Storage failed", 
-            details: error.response?.data?.error?.message || error.message 
+            error: "Generation failed", 
+            details: error.message 
         });
     }
 });
