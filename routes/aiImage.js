@@ -4,7 +4,6 @@ import { supabase } from "../supabaseClient.js";
 
 const router = express.Router();
 
-// Helper function to download and upload to Supabase
 async function uploadToSupabase(url, fileName) {
     const response = await axios.get(url, { responseType: 'arraybuffer' });
     const { data, error } = await supabase.storage
@@ -20,34 +19,34 @@ router.post("/generate", async (req, res) => {
         const { name, description } = req.body;
         if (!name || !description) return res.status(400).json({ error: "Name and Description are required" });
 
-        // 1. Prompts for Premium Quality
         const imageConfigs = [
-            { type: 'icon', prompt: `Professional 512x512 app icon for '${name}': ${description}. High-quality, flat vector, modern app store style.` },
+            { type: 'icon', prompt: `Professional 512x512 app icon for '${name}': ${description}. High-quality, flat vector.` },
             { type: 'screen1', prompt: `Mobile app screenshot for '${name}': Main interface, high resolution, professional UI.` },
             { type: 'screen2', prompt: `Mobile app screenshot for '${name}': Feature showcase, clean design.` }
         ];
 
-        // 2. Generate Images via OpenRouter (Updated Endpoint & Model)
+        // FIX: Model name and parameters updated for OpenRouter stability
         const generatedData = await Promise.all(imageConfigs.map(async (config) => {
-            // OpenRouter ke liye "openai/dall-e-3" ya "google/imagen-3" best hain
             const aiRes = await axios.post("https://openrouter.ai/api/v1/images/generations", {
                 model: "openai/dall-e-3", 
                 prompt: config.prompt,
-                response_format: "url"
+                size: "1024x1024" // Added size parameter
             }, { 
                 headers: { 
                     "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
                     "Content-Type": "application/json",
-                    "HTTP-Referer": "https://lovable.dev", // OpenRouter requires this
+                    "HTTP-Referer": "https://lovable.dev",
                     "X-Title": "App Store AI"
                 } 
             });
             
-            if (!aiRes.data.data || !aiRes.data.data[0]) throw new Error("AI Generation returned no data");
-            return { type: config.type, url: aiRes.data.data[0].url };
+            // Check for OpenRouter specific data structure
+            const imageUrl = aiRes.data.data?.[0]?.url || aiRes.data?.[0]?.url;
+            if (!imageUrl) throw new Error("AI Generation returned no URL");
+            
+            return { type: config.type, url: imageUrl };
         }));
 
-        // 3. Upload to Supabase to make them Permanent
         const timestamp = Date.now();
         const folderName = name.replace(/\s+/g, '_').toLowerCase();
         
@@ -55,7 +54,6 @@ router.post("/generate", async (req, res) => {
             uploadToSupabase(img.url, `${folderName}/${img.type}_${timestamp}.png`)
         ));
 
-        // 4. Send Clean Response
         res.json({
             success: true,
             icon_url: finalUrls[0],
@@ -64,7 +62,6 @@ router.post("/generate", async (req, res) => {
         });
 
     } catch (error) {
-        // Detailed error logging for Render
         console.error("Backend Error Detail:", error.response?.data || error.message);
         res.status(500).json({ 
             success: false, 
