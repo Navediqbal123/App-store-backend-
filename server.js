@@ -14,6 +14,7 @@ import virusScanRoutes from "./routes/virusScan.routes.js";
 import aiUploadRoutes from "./routes/aiUpload.routes.js";
 import chatbotRoutes from "./routes/chatbot.routes.js";
 import cloneCheckRoutes from "./routes/cloneCheck.routes.js";
+import aiImageRoutes from "./routes/aiImage.js";
 
 dotenv.config();
 const app = express();
@@ -30,6 +31,7 @@ app.use("/api/virus-scan", virusScanRoutes);
 app.use("/api/ai-upload", aiUploadRoutes);
 app.use("/api/chatbot", chatbotRoutes);
 app.use("/api/clone-check", cloneCheckRoutes);
+app.use("/api/ai-image", aiImageRoutes);
 
 /* -----------------------------------
    AUTH LOGIN (Fixed with Token)
