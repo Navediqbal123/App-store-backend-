@@ -26,21 +26,19 @@ router.post("/generate", async (req, res) => {
         ];
 
         const generatedData = await Promise.all(imageConfigs.map(async (config) => {
-            // FIX: Using a more stable OpenRouter model and checking both possible response paths
             const aiRes = await axios.post("https://openrouter.ai/api/v1/images/generations", {
-                model: "black-forest-labs/flux-1-schnell", // Much more stable on OpenRouter
+                model: "black-forest-labs/flux-1-schnell:free", // ✅ :free added
                 prompt: config.prompt,
                 size: "1024x1024" 
             }, { 
                 headers: { 
                     "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
                     "Content-Type": "application/json",
-                    "HTTP-Referer": "https://lovable.dev",
+                    "HTTP-Referer": "https://app-store-backend-lodn.onrender.com", // ✅ fixed
                     "X-Title": "App Store AI"
                 } 
             });
             
-            // Fix for different API response structures
             const imageUrl = aiRes.data.data?.[0]?.url || aiRes.data?.[0]?.url;
             if (!imageUrl) throw new Error(`AI returned: ${JSON.stringify(aiRes.data)}`);
             
