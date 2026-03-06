@@ -20,27 +20,15 @@ router.post("/generate", async (req, res) => {
         if (!name || !description) return res.status(400).json({ error: "Name and Description are required" });
 
         const imageConfigs = [
-            { type: 'icon', prompt: `Professional 512x512 app icon for '${name}': ${description}. High-quality, flat vector.` },
+            { type: 'icon', prompt: `Professional 512x512 app icon for '${name}': ${description}. High-quality, flat vector style.` },
             { type: 'screen1', prompt: `Mobile app screenshot for '${name}': Main interface, high resolution, professional UI.` },
             { type: 'screen2', prompt: `Mobile app screenshot for '${name}': Feature showcase, clean design.` }
         ];
 
         const generatedData = await Promise.all(imageConfigs.map(async (config) => {
-            const aiRes = await axios.post("https://openrouter.ai/api/v1/images/generations", {
-                model: "black-forest-labs/flux-1-schnell:free", // ✅ :free added
-                prompt: config.prompt,
-                size: "1024x1024" 
-            }, { 
-                headers: { 
-                    "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
-                    "Content-Type": "application/json",
-                    "HTTP-Referer": "https://app-store-backend-lodn.onrender.com", // ✅ fixed
-                    "X-Title": "App Store AI"
-                } 
-            });
-            
-            const imageUrl = aiRes.data.data?.[0]?.url || aiRes.data?.[0]?.url;
-            if (!imageUrl) throw new Error(`AI returned: ${JSON.stringify(aiRes.data)}`);
+            // ✅ Pollinations AI - Free, no API key needed
+            const encodedPrompt = encodeURIComponent(config.prompt);
+            const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=1024&nologo=true`;
             
             return { type: config.type, url: imageUrl };
         }));
