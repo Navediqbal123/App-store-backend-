@@ -20,7 +20,7 @@ dotenv.config();
 const app = express();
 
 app.use(cors({
-  origin: "*",
+  origin: "https://zenova-stellar-forge.lovable.app",
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"]
 }));
