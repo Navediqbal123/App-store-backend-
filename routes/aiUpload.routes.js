@@ -9,15 +9,15 @@ router.post("/ai-upload", async (req, res) => {
     const { appName, category, permissions } = req.body;
     if (!appName) return res.status(400).json({ error: "appName required" });
 
-    // 1. Call AI with Structured Prompt - GPT Astra 6
-    const aiResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    // 1. Call AI with Structured Prompt - GPT-6 Astra from Experimentallabs
+    const aiResponse = await fetch("https://api.experimentallabs.ai/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        Authorization: `Bearer ${process.env.EXPERIMENTALLABS_API_KEY}`,
       },
       body: JSON.stringify({
-        model: "openai/gpt-astra-6",
+        model: "gpt-6-astra",
         messages: [
           { role: "system", content: "Return ONLY a JSON object with keys: description, tags (array), privacy_summary." },
           { role: "user", content: `App: ${appName}, Category: ${category}, Permissions: ${permissions}` }
