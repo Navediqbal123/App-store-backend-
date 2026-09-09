@@ -1,10 +1,10 @@
 import express from "express";
-import { supabase } from "../supabaseClient.js"; // SDK use karein
+import { supabase } from "../supabaseClient.js";
 import fetch from "node-fetch";
 
 const router = express.Router();
 
-router.post("/ai-upload", async (req, res) => {
+router.post("/", async (req, res) => {
   try {
     const { appName, category, permissions } = req.body;
     if (!appName) return res.status(400).json({ error: "appName required" });
@@ -19,10 +19,16 @@ router.post("/ai-upload", async (req, res) => {
       body: JSON.stringify({
         model: "gpt-6-astra",
         messages: [
-          { role: "system", content: "Return ONLY a JSON object with keys: description, tags (array), privacy_summary." },
-          { role: "user", content: `App: ${appName}, Category: ${category}, Permissions: ${permissions}` }
+          {
+            role: "system",
+            content: "Return ONLY a JSON object with keys: description, tags (array), privacy_summary."
+          },
+          {
+            role: "user",
+            content: `App: ${appName}, Category: ${category}, Permissions: ${permissions}`
+          }
         ],
-        response_format: { type: "json_object" } // AI hamesha JSON hi dega
+        response_format: { type: "json_object" }
       }),
     });
 
@@ -37,10 +43,10 @@ router.post("/ai-upload", async (req, res) => {
     res.json({ success: true, ...content });
 
   } catch (err) {
-    // 3. Error Logging
     await supabase.from("admin_ai_insights").insert([
       { type: "ai_upload", result: "error" }
     ]);
+
     res.status(500).json({ error: "AI failed to generate content" });
   }
 });
