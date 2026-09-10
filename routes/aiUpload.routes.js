@@ -9,15 +9,15 @@ router.post("/", async (req, res) => {
     const { appName, category, permissions } = req.body;
     if (!appName) return res.status(400).json({ error: "appName required" });
 
-    // 1. Call AI with Structured Prompt - GPT-6 Astra from Experimentallabs
-    const aiResponse = await fetch("https://api.experimentallabs.ai/v1/chat/completions", {
+    // 1. Call AI with Structured Prompt - GPT-5.6 Luna from Experimentallabs
+    const aiResponse = await fetch("https://api.experimentallabs.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${process.env.EXPERIMENTALLABS_API_KEY}`,
       },
       body: JSON.stringify({
-        model: "gpt-6-astra",
+        model: "gpt-5.6-luna",
         messages: [
           {
             role: "system",
