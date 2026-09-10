@@ -6,35 +6,90 @@ const router = express.Router();
 
 router.post("/", async (req, res) => {
   try {
-    const { appName, category, permissions } = req.body;
+    const {
+      appName,
+      category,
+      permissions,
+      iconUrl,
+      screenshotUrls = [],
+    } = req.body;
 
     if (!appName) {
       return res.status(400).json({ error: "appName required" });
     }
 
-    // 1. Call Experiential Labs AI - GPT-5.6 Luna
+    // Text + App Icon + Screenshots
+    const content = [
+      {
+        type: "text",
+        text: `
+Analyze this mobile app carefully.
+
+App Name: ${appName}
+Category: ${category || "Unknown"}
+Permissions: ${permissions || "None"}
+
+Analyze the app icon and screenshots if provided.
+
+Return ONLY valid JSON with:
+{
+  "description": "professional app-store description",
+  "tags": ["tag1", "tag2", "tag3"],
+  "privacy_summary": "simple privacy explanation",
+  "icon_analysis": "short analysis of the app icon",
+  "screenshot_analysis": "short analysis of the screenshots",
+  "quality_score": 0
+}
+
+Quality score must be between 0 and 100.
+        `,
+      },
+    ];
+
+    // App Icon
+    if (iconUrl) {
+      content.push({
+        type: "image_url",
+        image_url: {
+          url: iconUrl,
+        },
+      });
+    }
+
+    // App Screenshots
+    for (const screenshotUrl of screenshotUrls.slice(0, 5)) {
+      if (screenshotUrl) {
+        content.push({
+          type: "image_url",
+          image_url: {
+            url: screenshotUrl,
+          },
+        });
+      }
+    }
+
+    // OpenRouter AI
     const aiResponse = await fetch(
-      "https://api.experientiallabs.ai/v1/chat/completions",
+      "https://openrouter.ai/api/v1/chat/completions",
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${process.env.EXPERIMENTALLABS_API_KEY}`,
+          Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+          "HTTP-Referer": "https://zenova-stellar-forge.lovable.app",
+          "X-Title": "App Store AI Upload",
         },
         body: JSON.stringify({
-          model: "gpt-5.6-luna",
+          model: "openrouter/free",
           messages: [
             {
-              role: "system",
-              content:
-                "Return ONLY a JSON object with keys: description, tags (array), privacy_summary.",
-            },
-            {
               role: "user",
-              content: `App: ${appName}, Category: ${category}, Permissions: ${permissions}`,
+              content,
             },
           ],
-          response_format: { type: "json_object" },
+          response_format: {
+            type: "json_object",
+          },
         }),
       }
     );
@@ -43,13 +98,19 @@ router.post("/", async (req, res) => {
 
     if (!aiResponse.ok) {
       throw new Error(
-        aiData?.error?.message || `AI API error: ${aiResponse.status}`
+        aiData?.error?.message || `OpenRouter error: ${aiResponse.status}`
       );
     }
 
-    const content = JSON.parse(aiData.choices[0].message.content);
+    const aiText = aiData?.choices?.[0]?.message?.content;
 
-    // 2. Logging with Supabase
+    if (!aiText) {
+      throw new Error("AI returned empty response");
+    }
+
+    const result = JSON.parse(aiText);
+
+    // Supabase logging
     await supabase.from("admin_ai_insights").insert([
       {
         type: "ai_upload",
@@ -59,8 +120,9 @@ router.post("/", async (req, res) => {
 
     res.json({
       success: true,
-      ...content,
+      ...result,
     });
+
   } catch (err) {
     console.error("AI Upload Error:", err);
 
