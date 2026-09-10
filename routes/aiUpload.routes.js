@@ -43,6 +43,8 @@ router.post("/", async (req, res) => {
     res.json({ success: true, ...content });
 
   } catch (err) {
+    console.error("AI Upload Error:", err);
+
     await supabase.from("admin_ai_insights").insert([
       { type: "ai_upload", result: "error" }
     ]);
