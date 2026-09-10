@@ -10,7 +10,7 @@ router.post("/", async (req, res) => {
     if (!appName) return res.status(400).json({ error: "appName required" });
 
     // 1. Call AI with Structured Prompt - GPT-5.6 Luna from Experimentallabs
-    const aiResponse = await fetch("https://api.experimentallabs.ai/api/v1/chat/completions", {
+    const aiResponse = await fetch("https://api1.experimentallabs.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
